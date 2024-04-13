@@ -19,7 +19,7 @@ function BasisStates(numLevels, totOccupancy=-999, totSpin=-999)
 end
 
 
-function TransformQubit(qubit::Int64, operator::Char)
+function TransformQubit(qubit:Int64, operator::Char)
     if operator == 'n'
         return qubit, qubit
     elseif operator == 'h'
@@ -32,31 +32,37 @@ function TransformQubit(qubit::Int64, operator::Char)
 end
 
 
-function applyOperatorOnState(stateDict::Dict{Vector{Int64}, Float64}, operatorList::Vector{Tuple{String, Float64, Vector{Int64}}})
-    completeOutputState = @distributed (a, b) -> merge(+, a, b) for (opType, opStrength, opMembers) in operatorList
-        outputState = Dict()
+function applyOperatorOnState(stateDict::Dict{Vector{Int64}, Float64}, operatorList::Vector{Tuple{String, Float64, String}})
+    outputState = Dict()
+    for (opType, opStrength, opMembers) in operatorList
         for (state, coefficient) in stateDict
             newCoefficient = coefficient
-            newState = copy(state)
+            newState = state
             for (siteIndex, operator) in zip(reverse(opMembers), reverse(opType))
-                newQubit, factor = TransformQubit(newState[siteIndex], operator)
+                newQubit, factor = TransformQubit(state[siteIndex], operator)
                 if factor == 0
                     newCoefficient = 0
                     break
                 end
                 newState[siteIndex] = newQubit
-                exchangeSign = operator in ['+', '-'] ? (-1)^sum(newState[1:siteIndex]) : 1
+                exchangeSign = operator in ['+', '-'] ? (-1)^sum(state[1:siteIndex]) : 1
                 newCoefficient *= factor
             end
             if newCoefficient != 0
-                if newState in keys(outputState)
+                if newState in outputState
                     outputState[newState] += newCoefficient
                 else
                     outputState[newState] = newCoefficient
                 end
             end
         end
-        outputState;
     end
-    return completeOutputState
 end
+
+
+function GeneralOperatorMatrix(basisStates, operatorList, show_progress=true)
+    dimension = length(basisStates)
+    operatorMatrix = zeros(dimension, dimension)
+    pbar = Progress(length(basisStates))
+    return operatorMatrix
+end    
