@@ -4,8 +4,8 @@ using ProgressMeter
 using SparseArrays
 
 
-function BasisStates(numLevels, totOccupancy=-999, totSpin=-999)
-	basisStates = []
+function BasisStates(numLevels::Int64; totOccupancy::Float64=-999., totSpin::Float64=-999.)
+    basisStates = Vector{Int64}[]
 	Threads.@threads for i in 0:2^(numLevels)-1
 		state = [parse(Int, ch) for ch in lpad(string(i, base=2), numLevels, '0')]
         stateTotOccupancy = sum(state)
@@ -59,4 +59,17 @@ function applyOperatorOnState(stateDict::Dict{Vector{Int64}, Float64}, operatorL
         outputState;
     end
     return completeOutputState
+end
+
+function generalOperatorMatrix(basisStates::Vector{Vector{Int64}}, operatorList::Vector{Tuple{String, Float64, Vector{Int64}}})
+    operatorDimension = length(basisStates)
+    operatorMatrix = zeros((operatorDimension, operatorDimension))
+    #=Threads.@threads =#
+    for (index1, state) in collect(enumerate(basisStates))
+        stateDict = Dict(state => 1.)
+        for (newState, coefficient) in applyOperatorOnState(stateDict, operatorList)
+            operatorMatrix[index1, basisStates .== [newState]] .= coefficient
+        end
+    end
+    return operatorMatrix
 end
