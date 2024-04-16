@@ -4,22 +4,53 @@ using ProgressMeter
 using SparseArrays
 
 
-function BasisStates(numLevels::Int64; totOccupancy::Float64=-999., totSpin::Float64=-999.)
-    basisStates = Vector{Int64}[]
-	Threads.@threads for i in 0:2^(numLevels)-1
-		state = [parse(Int, ch) for ch in lpad(string(i, base=2), numLevels, '0')]
-        stateTotOccupancy = sum(state)
-        stateTotSpin = 0.5 * (sum(state[1:2:end]) - sum(state[2:2:end]))
-		if ((totOccupancy == -999 || stateTotOccupancy == totOccupancy)
-            && (totSpin == -999 || stateTotSpin == totSpin))
-            push!(basisStates, state)
-		end
-	end
-	return basisStates
+"""
+Returns a set of basis states in the form
+[[0,0,...,0],
+ [0,0,...,1],
+       .
+       .
+       .
+ [1,1,...,1]
+],
+where each inner vector represents a configuration of the electronic fock states.
+Optionally accepts a parameter totOccupancy that restricts the basis states to only
+those with the specified total occupancy, and a parameter totSpin that does the same
+but for a specified total magnetisation.
+"""
+function BasisStates(numLevels::Int64; totOccupancy::Int64=-999, totSpin::Float64=-999.0)
+
+    # if totOccupancy is not set, all occupancies from 0 to N are allowed,
+    # otherwise use only the provided totOccupancy
+    if totOccupancy == -999
+        allowedOccupancies = 0:numLevels
+    else
+        @assert 0 <= totOccupancy <= numLevels
+        allowedOccupancies = (totOccupancy,)
+    end
+
+    # create dictionary to store configurations classified by their total occupancies.
+    # For eg, basisStates = {0: [[0, 0]], 1: [[1, 0], [0, 1]], 2: [[1, 1]]}}
+    basisStates = Dict((totOcc => BitArray[] for totOcc in allowedOccupancies))
+
+    # generate all possible configs, by running integers from 0 to 2^N-1, and converting
+    # them to binary forms
+    allConfigs = digits.(0:2^numLevels - 1, base=2, pad=numLevels) |> reverse
+
+    # loop over allowed occupancies, and store the configs in the dict
+    # classified by their total occupancies.
+    Threads.@threads for totOcc in allowedOccupancies
+        basisStates[totOcc] = allConfigs[sum.(allConfigs) .== totOcc]
+    end
+
+    return basisStates
 end
 
 
-function TransformQubit(qubit::Int64, operator::Char)
+"""
+Transforms a single Fock state |n> (n=0/1) given an operator (= c/c^†/n̂/1-n̂).
+"""
+function TransformBit(qubit::Int64, operator::Char)
     if operator == 'n'
         return qubit, qubit
     elseif operator == 'h'
@@ -32,43 +63,42 @@ function TransformQubit(qubit::Int64, operator::Char)
 end
 
 
-function applyOperatorOnState(stateDict::Dict{Vector{Int64}, Float64}, operatorList::Vector{Tuple{String, Float64, Vector{Int64}}})
+function applyOperatorOnState(stateDict::Dict{Vector{Int64},Float64}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}})
     completeOutputState = @distributed (a, b) -> merge(+, a, b) for (opType, opStrength, opMembers) in operatorList
         outputState = Dict()
         for (state, coefficient) in stateDict
             newCoefficient = coefficient
             newState = copy(state)
             for (siteIndex, operator) in zip(reverse(opMembers), reverse(opType))
-                newQubit, factor = TransformQubit(newState[siteIndex], operator)
+                newQubit, factor = TransformBit(newState[siteIndex], operator)
                 if factor == 0
                     newCoefficient = 0
                     break
                 end
                 newState[siteIndex] = newQubit
                 exchangeSign = operator in ['+', '-'] ? (-1)^sum(newState[1:siteIndex]) : 1
-                newCoefficient *= factor
+                newCoefficient *= exchangeSign * factor
             end
             if newCoefficient != 0
                 if newState in keys(outputState)
-                    outputState[newState] += newCoefficient
+                    outputState[newState] += opStrength * newCoefficient
                 else
-                    outputState[newState] = newCoefficient
+                    outputState[newState] = opStrength * newCoefficient
                 end
             end
         end
-        outputState;
+        outputState
     end
     return completeOutputState
 end
 
-function generalOperatorMatrix(basisStates::Vector{Vector{Int64}}, operatorList::Vector{Tuple{String, Float64, Vector{Int64}}})
+function generalOperatorMatrix(basisStates::Vector{Vector{Int64}}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}})
     operatorDimension = length(basisStates)
     operatorMatrix = zeros((operatorDimension, operatorDimension))
-    #=Threads.@threads =#
-    for (index1, state) in collect(enumerate(basisStates))
-        stateDict = Dict(state => 1.)
+    Threads.@threads for (index1, state) in collect(enumerate(basisStates))
+        stateDict = Dict(state => 1.0)
         for (newState, coefficient) in applyOperatorOnState(stateDict, operatorList)
-            operatorMatrix[index1, basisStates .== [newState]] .= coefficient
+            operatorMatrix[index1, basisStates.==[newState]] .= coefficient
         end
     end
     return operatorMatrix
