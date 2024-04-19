@@ -151,3 +151,13 @@ function getSpectrum(hamiltonian::OrderedDict{Int64,Matrix{Float64}}; totOccupan
     end
     return eigvals, eigvecs
 end
+
+
+function gstateCorrelation(basisStates, eigvals, eigvecs, operatorList)
+    minimumOcc = collect(keys(eigvals))[argmin(minimum.(values(eigvals)))]
+    minimumIndex = argmin(eigvals[minimumOcc])
+    println(eigvals[minimumOcc][minimumIndex])
+    gstate = eigvecs[minimumOcc][minimumIndex]
+    operatorMatrix = generalOperatorMatrix(basisStates, operatorList)
+    return gstate' * operatorMatrix[minimumOcc] * gstate
+end
