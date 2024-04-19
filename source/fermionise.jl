@@ -116,6 +116,7 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
     return completeOutputState
 end
 
+
 function generalOperatorMatrix(basisStates::OrderedDict{Int64,Vector{BitArray}}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}})
     operatorFullMatrix = OrderedDict{Int64,Matrix{Float64}}()
     Threads.@threads for (totOcc, bstates) in collect(pairs(basisStates))
@@ -128,4 +129,25 @@ function generalOperatorMatrix(basisStates::OrderedDict{Int64,Vector{BitArray}},
         operatorFullMatrix[totOcc] = operatorSubMatrix
     end
     return operatorFullMatrix
+end
+
+
+function getSpectrum(hamiltonian::OrderedDict{Int64,Matrix{Float64}}; totOccupancy::Union{Vector{Int64},Nothing}=nothing)
+    # if totOccupancy is not set, all occupancies from 0 to N are allowed,
+    # otherwise use only the provided totOccupancy
+    if isnothing(totOccupancy)
+        allowedOccupancies = collect(keys(hamiltonian))
+    else
+        @assert all([totOcc in collect(keys(hamiltonian)) for totOcc in totOccupancy])
+        allowedOccupancies = totOccupancy
+    end
+
+    eigvals = Dict{Int64,Vector{Float64}}()
+    eigvecs = Dict{Int64,Vector{Vector{Float64}}}()
+    Threads.@threads for totOcc in allowedOccupancies
+        F = eigen(Hermitian(hamiltonian[totOcc]))
+        eigvals[totOcc] = F.values
+        eigvecs[totOcc] = eachcol(F.vectors)
+    end
+    return eigvals, eigvecs
 end
