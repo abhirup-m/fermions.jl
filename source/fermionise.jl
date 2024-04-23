@@ -1,11 +1,7 @@
+using Combinatorics
+using ProgressMeter
+using OrderedCollections
 using LinearAlgebra
-using Distributed
-addprocs(1)
-@everywhere using Combinatorics
-@everywhere using ProgressMeter
-# @everywhere using Term.Progress
-@everywhere using OrderedCollections
-
 
 """
 Returns a set of basis states in the form
@@ -34,7 +30,7 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Vector{Int64},Nothing
 
     # create dictionary to store configurations classified by their total occupancies.
     # For eg, basisStates = {0: [[0, 0]], 1: [[1, 0], [0, 1]], 2: [[1, 1]]}}
-    basisStates = OrderedDict((totOcc => BitArray[] for totOcc in allowedOccupancies))
+    basisStates = Dict{Tuple{Int64,Int64},Vector{BitArray}}()
 
     # generate all possible configs, by running integers from 0 to 2^N-1, and converting
     # them to binary forms
@@ -43,17 +39,22 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Vector{Int64},Nothing
     # loop over allowed occupancies, and store the configs in the dict
     # classified by their total occupancies. We will also store the subdimensions
     # while we are creating the dictionary.
-    subDimensions = Vector{Int64}(undef, length(allowedOccupancies))
-    Threads.@threads for index in eachindex(allowedOccupancies)
-        totOcc = allowedOccupancies[index]
-        basisStates[totOcc] = allConfigs[sum.(allConfigs).==totOcc]
-        subDimensions[index] = length(basisStates[totOcc])
+
+    for totOcc in allowedOccupancies
+        totoccMatchingConfigs = allConfigs[sum.(allConfigs).==totOcc]
+        for config in totoccMatchingConfigs
+            sigmaz = sum(config[1:2:end]) - sum(config[2:2:end])
+            if !((totOcc, sigmaz) in keys(basisStates))
+                basisStates[(totOcc, sigmaz)] = BitArray[]
+            end
+            push!(basisStates[(totOcc, sigmaz)], config)
+        end
     end
 
-    return basisStates, subDimensions
+    return basisStates
 end
 
-@everywhere function TransformBit(qubit::Bool, operator::Char)
+function TransformBit(qubit::Bool, operator::Char)
     if operator == 'n'
         return qubit, qubit
     elseif operator == 'h'
@@ -65,6 +66,7 @@ end
     end
 end
 
+
 function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}})
     # define a dictionary for the final state obtained after applying 
     # the operators on all basis states
@@ -72,10 +74,12 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
 
     # loop over all operator tuples within operatorList
     for (opType, opStrength, opMembers) in operatorList
-        @assert unique(opMembers) == opMembers
+        # @assert unique(opMembers) == opMembers
 
-        holeProjectionSites = opMembers[findall(x -> x == '+' || x == 'h', opType)]
-        particleProjectionSites = opMembers[findall(x -> x == '-' || x == 'n', opType)]
+        holeProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['+', 'h'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
+        particleProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['-', 'n'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
+        # holeProjectionSites = opMembers[findall(x -> x == '+' || x == 'h', opType)]
+        # particleProjectionSites = opMembers[findall(x -> x == '-' || x == 'n', opType)]
 
         for (state, coefficient) in stateDict
 
@@ -117,47 +121,38 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
 end
 
 
-function generalOperatorMatrix(basisStates::OrderedDict{Int64,Vector{BitArray}}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}})
-    operatorFullMatrix = OrderedDict{Int64,Matrix{Float64}}()
-    Threads.@threads for (totOcc, bstates) in collect(pairs(basisStates))
-        operatorSubMatrix = zeros(length(bstates), length(bstates))
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}})
+    operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
+    # operatorFullMatrix = Dict{Tuple{Int64,Int64},Matrix{Float64}}()
+    Threads.@threads for ((totOcc, sigmaz), bstates) in collect(pairs(basisStates))
+        # operatorSubMatrix = zeros(length(bstates), length(bstates))
         Threads.@threads for (index, state) in collect(enumerate(bstates))
             newState = applyOperatorOnState(Dict(state => 1.0), operatorList)
-            matchingIndices = findall(in(keys(newState)),bstates)
-            @inbounds operatorSubMatrix[index, matchingIndices] .= collect(values(newState)) 
+            matchingIndices = findall(in(keys(newState)), bstates)
+            operatorFullMatrix[(totOcc, sigmaz)][index, matchingIndices] .= collect(values(newState))
         end
-        operatorFullMatrix[totOcc] = operatorSubMatrix
+        # operatorFullMatrix[(totOcc, sigmaz)] = operatorSubMatrix
     end
     return operatorFullMatrix
 end
 
 
-function getSpectrum(hamiltonian::OrderedDict{Int64,Matrix{Float64}}; totOccupancy::Union{Vector{Int64},Nothing}=nothing)
-    # if totOccupancy is not set, all occupancies from 0 to N are allowed,
-    # otherwise use only the provided totOccupancy
-    if isnothing(totOccupancy)
-        allowedOccupancies = collect(keys(hamiltonian))
-    else
-        @assert all([totOcc in collect(keys(hamiltonian)) for totOcc in totOccupancy])
-        allowedOccupancies = totOccupancy
-    end
-
-    eigvals = Dict{Int64,Vector{Float64}}()
-    eigvecs = Dict{Int64,Vector{Vector{Float64}}}()
-    Threads.@threads for totOcc in allowedOccupancies
-        F = eigen(Hermitian(hamiltonian[totOcc]))
-        eigvals[totOcc] = F.values
-        eigvecs[totOcc] = eachcol(F.vectors)
+function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}})
+    eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}()
+    eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}()
+    for (index, matrix) in collect(hamiltonian)
+        F = eigen(Hermitian(matrix))
+        eigvals[index] = F.values
+        eigvecs[index] = eachcol(F.vectors)
     end
     return eigvals, eigvecs
 end
 
 
 function gstateCorrelation(basisStates, eigvals, eigvecs, operatorList)
-    minimumOcc = collect(keys(eigvals))[argmin(minimum.(values(eigvals)))]
-    minimumIndex = argmin(eigvals[minimumOcc])
-    println(eigvals[minimumOcc][minimumIndex])
-    gstate = eigvecs[minimumOcc][minimumIndex]
+    minimumBlock = collect(keys(eigvals))[argmin(minimum.(values(eigvals)))]
+    minimumIndex = argmin(eigvals[minimumBlock])
+    gstate = eigvecs[minimumBlock][minimumIndex]
     operatorMatrix = generalOperatorMatrix(basisStates, operatorList)
-    return gstate' * operatorMatrix[minimumOcc] * gstate
+    return gstate' * operatorMatrix[minimumBlock] * gstate
 end
