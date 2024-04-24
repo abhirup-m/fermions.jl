@@ -1,6 +1,5 @@
 using Combinatorics
 using ProgressMeter
-using OrderedCollections
 using LinearAlgebra
 
 """
@@ -123,15 +122,13 @@ end
 
 function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
-    # operatorFullMatrix = Dict{Tuple{Int64,Int64},Matrix{Float64}}()
-    Threads.@threads for ((totOcc, sigmaz), bstates) in collect(pairs(basisStates))
-        # operatorSubMatrix = zeros(length(bstates), length(bstates))
+    Threads.@threads for (key, bstates) in collect(basisStates)
         Threads.@threads for (index, state) in collect(enumerate(bstates))
             newState = applyOperatorOnState(Dict(state => 1.0), operatorList)
-            matchingIndices = findall(in(keys(newState)), bstates)
-            operatorFullMatrix[(totOcc, sigmaz)][index, matchingIndices] .= collect(values(newState))
+            for (nState, coeff) in newState
+                operatorFullMatrix[key][index, bstates.==[nState]] .= coeff
+            end
         end
-        # operatorFullMatrix[(totOcc, sigmaz)] = operatorSubMatrix
     end
     return operatorFullMatrix
 end
@@ -141,18 +138,10 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}})
     eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}()
     eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}()
     for (index, matrix) in collect(hamiltonian)
-        F = eigen(Hermitian(matrix))
-        eigvals[index] = F.values
+        # F = eigen(Hermitian(matrix))
+        F = schur(0.5 * (matrix + matrix'))
+        eigvals[index] = real.(F.values)
         eigvecs[index] = eachcol(F.vectors)
     end
     return eigvals, eigvecs
-end
-
-
-function gstateCorrelation(basisStates, eigvals, eigvecs, operatorList)
-    minimumBlock = collect(keys(eigvals))[argmin(minimum.(values(eigvals)))]
-    minimumIndex = argmin(eigvals[minimumBlock])
-    gstate = eigvecs[minimumBlock][minimumIndex]
-    operatorMatrix = generalOperatorMatrix(basisStates, operatorList)
-    return gstate' * operatorMatrix[minimumBlock] * gstate
 end

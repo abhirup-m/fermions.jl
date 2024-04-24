@@ -1,6 +1,6 @@
 include("fermionise.jl")
 
-function KondoKSpace(dispersion_arr, kondoCouplingDict, bathIntDict)
+function KondoKSpace(chosenIndices::Vector{Int64}, dispersionArray::Vector{Float64}, kondoJArray::Matrix{Float64}, bathIntFunc)
     # Hamiltonian is of the form
     # H = \sum_k ε_k n̂_k + \sum_{k1, k2} J_{k1, k2} S_d ⋅σ_{α,β} c^†_{k1 α} c_{k2 β}
     #     - 0.5\sum_{1,2,3,4} W_{1,2,3,4} \sum_σ (c^†_{1 σ} c_{2 σ}c^†_{3 σ} c_{4 σ} 
@@ -19,16 +19,21 @@ function KondoKSpace(dispersion_arr, kondoCouplingDict, bathIntDict)
     # are quartets of momentum indices [i,j,p,q], and the value at the key is the 
     # interaction strength W_{ki, kj, kp, kq}.
 
-    points = 1:length(dispersion_arr)
-    @assert length(kondoCouplingDict) == length(points)^2
-    @assert length(bathIntDict) == length(points)^4
+    @assert size(kondoJArray) == (length(dispersionArray), length(dispersionArray))
 
+    points = 1:length(chosenIndices)
     operatorList = Tuple{String,Float64,Vector{Int64}}[]
+    mapSeq = Dict(index => i for (i, index) in enumerate(chosenIndices))
 
+    dispersionDict = Dict(mapSeq[index] => dispersionArray[index] for index in chosenIndices)
+    kondoCouplingDict = Dict(Tuple(mapSeq[p] for p in points) => kondoJArray[points...]
+                             for points in Iterators.product(chosenIndices, chosenIndices))
+    bathIntDict = Dict(Tuple(mapSeq[p] for p in points) => bathIntFunc(points)
+                       for points in Iterators.product(chosenIndices, chosenIndices, chosenIndices, chosenIndices))
     # kinetic energy terms
     for momIndex in points
-        push!(operatorList, ("n", dispersion_arr[momIndex], [2 * momIndex + 1]))
-        push!(operatorList, ("n", dispersion_arr[momIndex], [2 * momIndex + 2]))
+        push!(operatorList, ("n", dispersionDict[momIndex], [2 * momIndex + 1]))
+        push!(operatorList, ("n", dispersionDict[momIndex], [2 * momIndex + 2]))
     end
 
     # Kondo terms, for all pairs of momenta
