@@ -79,6 +79,10 @@ function KondoKSpace(chosenIndices::Vector{Int64}, dispersionArray::Vector{Float
             continue
         end
 
+        # if length(Set(momIndices)) < 3
+        #     continue
+        # end
+
         # -0.5 W_{1,2,3,4} c^†_{1 ↑} c_{2, ↑} c^†_{3 ↑} c_{4, ↑}
         push!(operatorList, ("+-+-", -0.5 * bathIntDict[momIndices], upIndices))
 
@@ -87,6 +91,7 @@ function KondoKSpace(chosenIndices::Vector{Int64}, dispersionArray::Vector{Float
 
         # W_{1,2,3,4} c^†_{1 ↑} c_{2, ↑} c^†_{3 ↓} c_{4, ↓}
         push!(operatorList, ("+-+-", bathIntDict[momIndices], [upIndices[1:2]; downIndices[3:4]]))
+
     end
 
     return operatorList

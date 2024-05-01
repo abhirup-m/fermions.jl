@@ -73,12 +73,9 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
 
     # loop over all operator tuples within operatorList
     for (opType, opStrength, opMembers) in operatorList
-        # @assert unique(opMembers) == opMembers
 
         holeProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['+', 'h'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
         particleProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['-', 'n'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
-        # holeProjectionSites = opMembers[findall(x -> x == '+' || x == 'h', opType)]
-        # particleProjectionSites = opMembers[findall(x -> x == '-' || x == 'n', opType)]
 
         for (state, coefficient) in stateDict
 
@@ -120,13 +117,12 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
 end
 
 
-function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}})
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}}; tolerance::Float64=0.0)
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
     Threads.@threads for (key, bstates) in collect(basisStates)
-        Threads.@threads for (index, state) in collect(enumerate(bstates))
-            newState = applyOperatorOnState(Dict(state => 1.0), operatorList)
-            for (nState, coeff) in newState
-                operatorFullMatrix[key][index, bstates.==[nState]] .= coeff
+        for (index, state) in collect(enumerate(bstates))
+            for (nState, coeff) in applyOperatorOnState(Dict(state => 1.0), operatorList)
+                operatorFullMatrix[key][index, bstates.==[nState]] .= tolerance == 0 ? coeff : round(coeff, digits=trunc(Int, -log10(tolerance)))
             end
         end
     end
@@ -138,10 +134,9 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}})
     eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}()
     eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}()
     for (index, matrix) in collect(hamiltonian)
-        # F = eigen(Hermitian(matrix))
-        F = schur(0.5 * (matrix + matrix'))
-        eigvals[index] = real.(F.values)
-        eigvecs[index] = eachcol(F.vectors)
+        F = eigen(Hermitian(matrix))
+        eigvals[index] = sort(F.values)
+        eigvecs[index] = [F.vectors[:, i] for i in sortperm(F.values)]
     end
     return eigvals, eigvecs
 end

@@ -2,7 +2,8 @@ using LinearAlgebra
 include("fermionise.jl")
 
 function gstateCorrelation(basisStates, eigvals, eigvecs, operatorList)
-    minimumBlock = collect(keys(eigvals))[argmin(minimum.(values(eigvals)))]
+    minimumEnergies = minimum.(values(eigvals))
+    minimumBlock = collect(keys(eigvals))[argmin(minimumEnergies)]
     minimumIndex = argmin(eigvals[minimumBlock])
     gstate = eigvecs[minimumBlock][minimumIndex]
     operatorMatrix = generalOperatorMatrix(basisStates, operatorList)
