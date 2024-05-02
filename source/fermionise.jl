@@ -1,6 +1,7 @@
 using Combinatorics
 using ProgressMeter
 using LinearAlgebra
+using Distributed
 
 """
 Returns a set of basis states in the form
@@ -53,7 +54,7 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Vector{Int64},Nothing
     return basisStates
 end
 
-function TransformBit(qubit::Bool, operator::Char)
+@everywhere function TransformBit(qubit::Bool, operator::Char)
     if operator == 'n'
         return qubit, qubit
     elseif operator == 'h'
@@ -66,13 +67,13 @@ function TransformBit(qubit::Bool, operator::Char)
 end
 
 
-function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}})
+@everywhere function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     # define a dictionary for the final state obtained after applying 
     # the operators on all basis states
     completeOutputState = Dict{BitVector,Float64}()
 
     # loop over all operator tuples within operatorList
-    for (opType, opStrength, opMembers) in operatorList
+    for ((opType, opMembers), opStrength) in pairs(operatorList)
 
         holeProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['+', 'h'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
         particleProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['-', 'n'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
@@ -117,7 +118,7 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
 end
 
 
-function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Vector{Tuple{String,Float64,Vector{Int64}}}; tolerance::Float64=0.0)
+@everywhere function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64}; tolerance::Float64=0.0)
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
     Threads.@threads for (key, bstates) in collect(basisStates)
         for (index, state) in collect(enumerate(bstates))
@@ -127,6 +128,16 @@ function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitAr
         end
     end
     return operatorFullMatrix
+end
+
+
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Vector{Float64}}; tolerance::Float64=0.0)
+    operatorFullMatrices = [Dict{Tuple{Int64,Int64},Matrix{Float64}}() for _ in length(collect(values(operatorList))[1])]
+    for (key, couplingSet) in operatorList
+        subMatrix = generalOperatorMatrix(basisStates, Dict(key => 1.0); tolerance=tolerance)
+        operatorFullMatrices = [merge(+, dict, Dict(k => v .* coupling for (k,v) in subMatrix)) for (dict, coupling) in zip(operatorFullMatrices, couplingSet)]
+    end
+    return operatorFullMatrices
 end
 
 
