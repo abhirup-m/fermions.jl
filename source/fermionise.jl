@@ -1,7 +1,6 @@
 using Combinatorics
 using ProgressMeter
 using LinearAlgebra
-using Distributed
 
 """
 Returns a set of basis states in the form
@@ -54,7 +53,7 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Vector{Int64},Nothing
     return basisStates
 end
 
-@everywhere function TransformBit(qubit::Bool, operator::Char)
+function TransformBit(qubit::Bool, operator::Char)
     if operator == 'n'
         return qubit, qubit
     elseif operator == 'h'
@@ -66,18 +65,15 @@ end
     end
 end
 
-
-@everywhere function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     # define a dictionary for the final state obtained after applying 
     # the operators on all basis states
     completeOutputState = Dict{BitVector,Float64}()
-
     # loop over all operator tuples within operatorList
     for ((opType, opMembers), opStrength) in pairs(operatorList)
 
         holeProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['+', 'h'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
         particleProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['-', 'n'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
-
         for (state, coefficient) in stateDict
 
             # from the outset, ignore states that are creating at occupied bits, destroying 
@@ -102,7 +98,9 @@ end
                 @inbounds newState[siteIndex] = newQubit
                 newCoefficient *= exchangeSign * factor
             end
-
+            # if state == [1, 0, 1, 0, 1, 0, 1, 1] && newState == [1, 0, 1, 1, 1, 0, 1, 0] && newCoefficient != 0
+            #     println(opType, opMembers, opStrength, newCoefficient)
+            # end
             # if the coefficient of the transformation is non-zero, add this to the output state
             # dictionary for the operator tuple we are currently looping over
             if newCoefficient != 0
@@ -118,12 +116,17 @@ end
 end
 
 
-@everywhere function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64}; tolerance::Float64=0.0)
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64}; tolerance::Float64=0.0)
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
-    Threads.@threads for (key, bstates) in collect(basisStates)
+    for (key, bstates) in collect(basisStates)
+        # Threads.@threads
         for (index, state) in collect(enumerate(bstates))
+            # if key == (5, 3) && length(applyOperatorOnState(Dict(state => 1.0), operatorList)) > 0 && index in [1, 2]
+            #     # println(operatorList)
+            #     println((index, prettyPrint(state), "→", Dict(prettyPrint(k) => v for (k, v) in applyOperatorOnState(Dict(state => 1.0), operatorList))))
+            # end
             for (nState, coeff) in applyOperatorOnState(Dict(state => 1.0), operatorList)
-                operatorFullMatrix[key][index, bstates.==[nState]] .= tolerance == 0 ? coeff : round(coeff, digits=trunc(Int, -log10(tolerance)))
+                operatorFullMatrix[key][index, bstates.==[nState]] .= coeff
             end
         end
     end
@@ -132,22 +135,53 @@ end
 
 
 function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Vector{Float64}}; tolerance::Float64=0.0)
-    operatorFullMatrices = [Dict{Tuple{Int64,Int64},Matrix{Float64}}() for _ in length(collect(values(operatorList))[1])]
+    operatorFullMatrices = [Dict{Tuple{Int64,Int64},Matrix{Float64}}() for _ in 1:length(collect(values(operatorList))[1])]
     for (key, couplingSet) in operatorList
+        if iszero(couplingSet)
+            continue
+        end
         subMatrix = generalOperatorMatrix(basisStates, Dict(key => 1.0); tolerance=tolerance)
-        operatorFullMatrices = [merge(+, dict, Dict(k => v .* coupling for (k,v) in subMatrix)) for (dict, coupling) in zip(operatorFullMatrices, couplingSet)]
+        operatorFullMatrices = [merge(+, dict, Dict(k => smallMatrix .* coupling for (k, smallMatrix) in subMatrix)) for (dict, coupling) in zip(operatorFullMatrices, couplingSet)]
     end
     return operatorFullMatrices
 end
 
 
-function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}})
-    eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}()
-    eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}()
-    for (index, matrix) in collect(hamiltonian)
+function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; progressEnabled=false)
+    eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}(index => [] for index in keys(hamiltonian))
+    eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}(index => [] for index in keys(hamiltonian))
+    pbar = nothing
+    if progressEnabled
+        pbar = Progress(length(hamiltonian))
+    end
+    Threads.@threads for (index, matrix) in collect(hamiltonian)
         F = eigen(Hermitian(matrix))
-        eigvals[index] = sort(F.values)
-        eigvecs[index] = [F.vectors[:, i] for i in sortperm(F.values)]
+        eigvalues = F.values
+        eigvals[index] = sort(eigvalues)
+        eigvecs[index] = [F.vectors[:, i] for i in sortperm(eigvalues)]
+        if !isnothing(pbar)
+            next!(pbar)
+        end
+    end
+    if !isnothing(pbar)
+        finish!(pbar)
     end
     return eigvals, eigvecs
+end
+
+function prettyPrint(state::BitVector)
+    output = ""
+    @assert length(state) % 2 == 0
+    for i in 1:2:length(state)
+        if state[[i, i + 1]] == [0, 0]
+            output = output * "0"
+        elseif state[[i, i + 1]] == [1, 0]
+            output = output * "↑"
+        elseif state[[i, i + 1]] == [0, 1]
+            output = output * "↓"
+        else
+            output = output * "2"
+        end
+    end
+    return output
 end
