@@ -72,15 +72,7 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
     # loop over all operator tuples within operatorList
     for ((opType, opMembers), opStrength) in pairs(operatorList)
 
-        holeProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['+', 'h'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
-        particleProjectionSites = [m for (i, m) in enumerate(reverse(opMembers)) if reverse(opType)[i] in ['-', 'n'] && (i == 1 || m ∉ reverse(opMembers)[1:i-1])]
         for (state, coefficient) in stateDict
-
-            # from the outset, ignore states that are creating at occupied bits, destroying 
-            # at empty bits, applying n at empty bits or checking 1-n at occupied bits.
-            if 1 in state[holeProjectionSites] || 0 in state[particleProjectionSites]
-                continue
-            end
 
             newCoefficient = coefficient
             newState = copy(state)
@@ -147,7 +139,7 @@ function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitAr
 end
 
 
-function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; progressEnabled=false)
+function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tolerance = 1e-10, progressEnabled=false)
     eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}(index => [] for index in keys(hamiltonian))
     eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}(index => [] for index in keys(hamiltonian))
     pbar = nothing
@@ -155,7 +147,8 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; prog
         pbar = Progress(length(hamiltonian))
     end
     Threads.@threads for (index, matrix) in collect(hamiltonian)
-        F = eigen(Hermitian(matrix))
+        roundedMatrix = round.(matrix, digits=trunc(Int, -log10(tolerance)))
+        F = eigen(Hermitian(roundedMatrix))
         eigvalues = F.values
         eigvals[index] = sort(eigvalues)
         eigvecs[index] = [F.vectors[:, i] for i in sortperm(eigvalues)]
