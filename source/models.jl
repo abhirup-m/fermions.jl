@@ -1,14 +1,14 @@
-function kondoKSpace(dispersion::Vector{Float64}, kondoDict::Dict{Tuple{Int64, Int64}, Float64}, bathIntDict::Dict{Tuple{Int64, Int64, Int64, Int64}, Float64})
+function kondoKSpace(dispersionDict::Dict{Int64, Float64}, kondoDict::Dict{Tuple{Int64, Int64}, Float64}, bathIntDict::Dict{Tuple{Int64, Int64, Int64, Int64}, Float64})
     operatorList = Dict{Tuple{String,Vector{Int64}},Float64}()
-    for (momIndex, energy) in enumerate(dispersion)
-        if energy == 0
-            continue
-        end
+    for (momIndex, energy) in dispersionDict
+        # if energy == 0
+        #     continue
+        # end
         merge!(+, operatorList, Dict(("n", [2 * momIndex + 1]) => energy))
         merge!(+, operatorList, Dict(("n", [2 * momIndex + 2]) => energy))
     end
 
-    momenta_indices = 1:length(dispersion)
+    momenta_indices = 1:length(dispersionDict)
     indicesRepeatedTwice = ntuple(x->momenta_indices, 2)
     indicesRepeatedFour = ntuple(x->momenta_indices, 4)
 
@@ -22,9 +22,9 @@ function kondoKSpace(dispersion::Vector{Float64}, kondoDict::Dict{Tuple{Int64, I
         impDownIndex = 2
 
         kondoIntVal = kondoDict[k_index_pair...]
-        if abs(kondoIntVal) < TOLERANCE
-            continue
-        end
+        # if abs(kondoIntVal) < TOLERANCE
+        #     continue
+        # end
 
         # 1/4 J n_d↑ (c^†_{k1 ↑}c_{k2 ↑}) 
         merge!(+, operatorList, Dict(("n+-", [impUpIndex, k_UpIndex1, k_UpIndex2]) => 0.25 * kondoIntVal))
@@ -49,9 +49,9 @@ function kondoKSpace(dispersion::Vector{Float64}, kondoDict::Dict{Tuple{Int64, I
     # bath interaction terms, for all quartets of momenta
     for index4tuples in Iterators.product(indicesRepeatedFour...)
         bathIntVal = bathIntDict[index4tuples...]
-        if abs(bathIntVal) < TOLERANCE
-            continue
-        end
+        # if abs(bathIntVal) < TOLERANCE
+        #     continue
+        # end
 
         # get the up and down indices for all momenta
         upIndices = collect(2 .* index4tuples .+ 1)
@@ -68,4 +68,24 @@ function kondoKSpace(dispersion::Vector{Float64}, kondoDict::Dict{Tuple{Int64, I
 
     end
     return operatorList
+end
+
+
+function kondoKSpace(dispersionDictArray::Vector{Dict{Int64, Float64}}, kondoDictArray::Vector{Dict{Tuple{Int64, Int64}, Float64}}, bathIntDictArray::Vector{Dict{Tuple{Int64, Int64, Int64, Int64}, Float64}})
+    operatorListSet = nothing
+    for (dispersionDict, kondoDict, bathIntDict) in zip(dispersionDictArray, kondoDictArray, bathIntDictArray)
+        operatorList = kondoKSpace(dispersionDict, kondoDict, bathIntDict)
+        if isnothing(operatorListSet)
+            operatorListSet = Dict{Tuple{String,Vector{Int64}},Vector{Float64}}(k => [v] for (k, v) in operatorList)
+        else
+            for (k, v) in operatorList
+                if k in keys(operatorListSet)
+                    operatorListSet[k] = [operatorListSet[k]; v]
+                else
+                    operatorListSet[k] = [v]
+                end
+            end
+        end
+    end
+    return operatorListSet
 end

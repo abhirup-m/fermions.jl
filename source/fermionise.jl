@@ -90,11 +90,6 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
                 @inbounds newState[siteIndex] = newQubit
                 newCoefficient *= exchangeSign * factor
             end
-            # if state == [1, 0, 1, 0, 1, 0, 1, 1] && newState == [1, 0, 1, 1, 1, 0, 1, 0] && newCoefficient != 0
-            #     println(opType, opMembers, opStrength, newCoefficient)
-            # end
-            # if the coefficient of the transformation is non-zero, add this to the output state
-            # dictionary for the operator tuple we are currently looping over
             if newCoefficient != 0
                 if newState in keys(completeOutputState)
                     completeOutputState[newState] += opStrength * newCoefficient
@@ -108,15 +103,10 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
 end
 
 
-function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64}; tolerance::Float64=0.0)
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
     for (key, bstates) in collect(basisStates)
-        # Threads.@threads
         for (index, state) in collect(enumerate(bstates))
-            # if key == (5, 3) && length(applyOperatorOnState(Dict(state => 1.0), operatorList)) > 0 && index in [1, 2]
-            #     # println(operatorList)
-            #     println((index, prettyPrint(state), "→", Dict(prettyPrint(k) => v for (k, v) in applyOperatorOnState(Dict(state => 1.0), operatorList))))
-            # end
             for (nState, coeff) in applyOperatorOnState(Dict(state => 1.0), operatorList)
                 operatorFullMatrix[key][index, bstates.==[nState]] .= coeff
             end
@@ -126,16 +116,38 @@ function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitAr
 end
 
 
-function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Vector{Float64}}; tolerance::Float64=0.0)
-    operatorFullMatrices = [Dict{Tuple{Int64,Int64},Matrix{Float64}}() for _ in 1:length(collect(values(operatorList))[1])]
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Vector{Float64}})
+
+    # obtain the number of matrices we need to obtain.
+    couplingSetLength = length(collect(values(operatorList))[1])
+
+    # stores set of hamiltonians, one for each k-space sample set.
+    operatorMatrixSet = [Dict{Tuple{Int64,Int64},Matrix{Float64}}() for _ in 1:couplingSetLength]
+
+    # loop over the operator types. key can be ("+-+-", [1,2,3,4]), 
+    # and couplingSet (like [0.1, 0.2] is the set of couplings over which the key will be broadcasted,
+    # leading to the set of operators [0.1 c^†_1 c_2 c^†_3 c_4; 0.2 c^†_1 c_2 c^†_3 c_4].
     for (key, couplingSet) in operatorList
+        # if all couplings in the set is zero, don't bother.
         if iszero(couplingSet)
             continue
         end
-        subMatrix = generalOperatorMatrix(basisStates, Dict(key => 1.0); tolerance=tolerance)
-        operatorFullMatrices = [merge(+, dict, Dict(k => smallMatrix .* coupling for (k, smallMatrix) in subMatrix)) for (dict, coupling) in zip(operatorFullMatrices, couplingSet)]
+
+        # calculates the matrix form for the skeleton operator `key`. Itself is
+        # a dict, with keys representing quantum numbers (ntot, Sztot) and values
+        # representing matrices for the subspace corresponding to the quantum numbers.
+        keyMatrix = generalOperatorMatrix(basisStates, Dict(key => 1.0))
+
+        # calculates the result of multiplying couplingSet to this matrix. The 
+        # multiplication is done uniformly to all sectors.
+        keyMatrixCouplingSet = [Dict(k => v .* coupling for (k,v) in keyMatrix) for coupling in couplingSet]
+
+        # the final step is to broadcast this coupling-multiplied skeletal operator to the 
+        # operatorFullMatrices vector, by adding to the existing values. 
+        operatorMatrixSet = [merge(+, keyMatrixCoupling, operatorMatrix) 
+                             for (keyMatrixCoupling, operatorMatrix) in zip(keyMatrixCouplingSet, operatorMatrixSet)]
     end
-    return operatorFullMatrices
+    return operatorMatrixSet
 end
 
 
