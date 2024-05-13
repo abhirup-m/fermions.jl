@@ -116,39 +116,21 @@ function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitAr
 end
 
 
-function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Vector{Float64}})
+function broadcastCouplingSet(matrixSet::Vector{Dict{Tuple{Int64,Int64}, Matrix{Float64}}}, couplingSet::Vector{Float64})
+    matrixSetCouplingMultiplied = fetch.([Threads.@spawn ((matrix, coupling) -> Dict(k => v .* coupling for (k, v) in matrix))(matrix, coupling) for (matrix, coupling) in zip(matrixSet, couplingSet)])
+    return merge(+, matrixSetCouplingMultiplied...)
+end
 
-    # obtain the number of matrices we need to obtain.
-    couplingSetLength = length(collect(values(operatorList))[1])
 
-    # stores set of hamiltonians, one for each k-space sample set.
-    operatorMatrixSet = [Dict{Tuple{Int64,Int64},Matrix{Float64}}() for _ in 1:couplingSetLength]
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Vector{Tuple{String,Vector{Int64}}}, couplingMatrix::Vector{Vector{Float64}})
 
-    # loop over the operator types. key can be ("+-+-", [1,2,3,4]), 
-    # and couplingSet (like [0.1, 0.2] is the set of couplings over which the key will be broadcasted,
-    # leading to the set of operators [0.1 c^†_1 c_2 c^†_3 c_4; 0.2 c^†_1 c_2 c^†_3 c_4].
-    for (key, couplingSet) in operatorList
-
-        # if all couplings in the set is zero, don't bother.
-        if iszero(couplingSet)
-            continue
-        end
-
-        # calculates the matrix form for the skeleton operator `key`. Itself is
-        # a dict, with keys representing quantum numbers (ntot, Sztot) and values
-        # representing matrices for the subspace corresponding to the quantum numbers.
-        keyMatrix = generalOperatorMatrix(basisStates, Dict(key => 1.0))
-
-        # calculates the result of multiplying couplingSet to this matrix. The 
-        # multiplication is done uniformly to all sectors.
-        keyMatrixCouplingSet = [Dict(k => v .* coupling for (k, v) in keyMatrix) for coupling in couplingSet]
-
-        # the final step is to broadcast this coupling-multiplied skeletal operator to the 
-        # operatorFullMatrices vector, by adding to the existing values. 
-        operatorMatrixSet = [merge(+, keyMatrixCoupling, operatorMatrix)
-                             for (keyMatrixCoupling, operatorMatrix) in zip(keyMatrixCouplingSet, operatorMatrixSet)]
-    end
+    # calculates the matrix form for the skeleton operator `key`. Itself is
+    # a dict, with keys representing quantum numbers (ntot, Sztot) and values
+    # representing matrices for the subspace corresponding to the quantum numbers.
+    matrixSet = fetch.([Threads.@spawn generalOperatorMatrix(basisStates, Dict(operator => 1.0)) for operator in operatorList])
+    operatorMatrixSet = fetch.([Threads.@spawn broadcastCouplingSet(matrixSet, couplingSet) for couplingSet in couplingMatrix])
     return operatorMatrixSet
+
 end
 
 

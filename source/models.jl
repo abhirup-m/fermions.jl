@@ -1,4 +1,4 @@
-function kondoKSpace(dispersionDict::Dict{Int64, Float64}, kondoDict::Dict{Tuple{Int64, Int64}, Float64}, bathIntDict::Dict{Tuple{Int64, Int64, Int64, Int64}, Float64})
+function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{Int64,Int64},Float64}, bathIntDict::Dict{Tuple{Int64,Int64,Int64,Int64},Float64})
     operatorList = Dict{Tuple{String,Vector{Int64}},Float64}()
     for (momIndex, energy) in dispersionDict
         # if energy == 0
@@ -9,8 +9,8 @@ function kondoKSpace(dispersionDict::Dict{Int64, Float64}, kondoDict::Dict{Tuple
     end
 
     momenta_indices = 1:length(dispersionDict)
-    indicesRepeatedTwice = ntuple(x->momenta_indices, 2)
-    indicesRepeatedFour = ntuple(x->momenta_indices, 4)
+    indicesRepeatedTwice = ntuple(x -> momenta_indices, 2)
+    indicesRepeatedFour = ntuple(x -> momenta_indices, 4)
 
     # Kondo terms, for all pairs of momenta
     for k_index_pair in Iterators.product(indicesRepeatedTwice...)
@@ -71,21 +71,15 @@ function kondoKSpace(dispersionDict::Dict{Int64, Float64}, kondoDict::Dict{Tuple
 end
 
 
-function kondoKSpace(dispersionDictArray::Vector{Dict{Int64, Float64}}, kondoDictArray::Vector{Dict{Tuple{Int64, Int64}, Float64}}, bathIntDictArray::Vector{Dict{Tuple{Int64, Int64, Int64, Int64}, Float64}})
-    operatorListSet = nothing
+function kondoKSpace(dispersionDictArray::Vector{Dict{Int64,Float64}}, kondoDictArray::Vector{Dict{Tuple{Int64,Int64},Float64}}, bathIntDictArray::Vector{Dict{Tuple{Int64,Int64,Int64,Int64},Float64}})
+    operatorListSet = Tuple{String,Vector{Int64}}[]
+    couplingMatrix = Vector{Float64}[]
     for (dispersionDict, kondoDict, bathIntDict) in zip(dispersionDictArray, kondoDictArray, bathIntDictArray)
         operatorList = kondoKSpace(dispersionDict, kondoDict, bathIntDict)
-        if isnothing(operatorListSet)
-            operatorListSet = Dict{Tuple{String,Vector{Int64}},Vector{Float64}}(k => [v] for (k, v) in operatorList)
-        else
-            for (k, v) in operatorList
-                if k in keys(operatorListSet)
-                    operatorListSet[k] = [operatorListSet[k]; v]
-                else
-                    operatorListSet[k] = [v]
-                end
-            end
+        if isempty(operatorListSet)
+            operatorListSet = collect(keys(operatorList))
         end
+        push!(couplingMatrix, collect(values(operatorList)))
     end
-    return operatorListSet
+    return operatorListSet, couplingMatrix
 end
