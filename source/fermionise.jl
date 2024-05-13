@@ -128,6 +128,7 @@ function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitAr
     # and couplingSet (like [0.1, 0.2] is the set of couplings over which the key will be broadcasted,
     # leading to the set of operators [0.1 c^†_1 c_2 c^†_3 c_4; 0.2 c^†_1 c_2 c^†_3 c_4].
     for (key, couplingSet) in operatorList
+
         # if all couplings in the set is zero, don't bother.
         if iszero(couplingSet)
             continue
@@ -140,25 +141,25 @@ function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitAr
 
         # calculates the result of multiplying couplingSet to this matrix. The 
         # multiplication is done uniformly to all sectors.
-        keyMatrixCouplingSet = [Dict(k => v .* coupling for (k,v) in keyMatrix) for coupling in couplingSet]
+        keyMatrixCouplingSet = [Dict(k => v .* coupling for (k, v) in keyMatrix) for coupling in couplingSet]
 
         # the final step is to broadcast this coupling-multiplied skeletal operator to the 
         # operatorFullMatrices vector, by adding to the existing values. 
-        operatorMatrixSet = [merge(+, keyMatrixCoupling, operatorMatrix) 
+        operatorMatrixSet = [merge(+, keyMatrixCoupling, operatorMatrix)
                              for (keyMatrixCoupling, operatorMatrix) in zip(keyMatrixCouplingSet, operatorMatrixSet)]
     end
     return operatorMatrixSet
 end
 
 
-function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tolerance = 1e-10, progressEnabled=false)
+function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tolerance=1e-10, progressEnabled=false)
     eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}(index => [] for index in keys(hamiltonian))
     eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}(index => [] for index in keys(hamiltonian))
     pbar = nothing
     if progressEnabled
         pbar = Progress(length(hamiltonian))
     end
-    Threads.@threads for (index, matrix) in collect(hamiltonian)
+    for (index, matrix) in collect(hamiltonian)
         roundedMatrix = round.(matrix, digits=trunc(Int, -log10(tolerance)))
         F = eigen(Hermitian(roundedMatrix))
         eigvalues = F.values
