@@ -1,5 +1,10 @@
 function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{Int64,Int64},Float64}, bathIntDict::Dict{Tuple{Int64,Int64,Int64,Int64},Float64})
     operatorList = Dict{Tuple{String,Vector{Int64}},Float64}()
+    # for index in 0:3
+    #     merge!(+, operatorList, Dict(("n", [2 * index + 1]) => TOLERANCE * 1000))
+    #     merge!(+, operatorList, Dict(("n", [2 * index + 2]) => -(TOLERANCE * 1000)))
+    # end
+
     for (momIndex, energy) in dispersionDict
         # if energy == 0
         #     continue
