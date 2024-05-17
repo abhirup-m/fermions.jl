@@ -1,0 +1,4 @@
+name = "fermions"
+uuid = "fea79142-a24c-4a65-a400-748d472cf2a8"
+authors = ["abhirup-m <mukherjeeabhirup44@gmail.com>"]
+version = "0.1.0"
