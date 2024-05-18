@@ -12,15 +12,19 @@ Optionally accepts a parameter totOccupancy that restricts the basis states to o
 those with the specified total occupancy, and a parameter totSpin that does the same
 but for a specified total magnetisation.
 """
-function BasisStates(numLevels::Int64; totOccupancy::Union{Vector{Int64},Nothing}=nothing)
+function BasisStates(numLevels::Int64; totOccupancy::Union{Int64, Vector{Int64},Nothing}=nothing)
+    @assert numLevels > 0
 
     # if totOccupancy is not set, all occupancies from 0 to N are allowed,
     # otherwise use only the provided totOccupancy
     if isnothing(totOccupancy)
         allowedOccupancies = 0:numLevels
-    else
+    elseif typeof(totOccupancy) == Vector{Int64}
         @assert all(0 .<= totOccupancy .<= numLevels)
         allowedOccupancies = totOccupancy
+    else
+        @assert all(0 <= totOccupancy <= numLevels)
+        allowedOccupancies = [totOccupancy]
     end
 
     # create dictionary to store configurations classified by their total occupancies.
@@ -40,9 +44,11 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Vector{Int64},Nothing
         for config in totoccMatchingConfigs
             sigmaz = sum(config[1:2:end]) - sum(config[2:2:end])
             if !((totOcc, sigmaz) in keys(basisStates))
-                basisStates[(totOcc, sigmaz)] = BitArray[]
+                basisStates[(totOcc, sigmaz)] = []
             end
-            push!(basisStates[(totOcc, sigmaz)], config)
+            if length(config) > 0
+                push!(basisStates[(totOcc, sigmaz)], config)
+            end
         end
     end
 
@@ -50,6 +56,7 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Vector{Int64},Nothing
 end
 
 function TransformBit(qubit::Bool, operator::Char)
+    @assert operator in ('n', 'h', '+', '-')
     if operator == 'n'
         return qubit, qubit
     elseif operator == 'h'
@@ -62,6 +69,8 @@ function TransformBit(qubit::Bool, operator::Char)
 end
 
 function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+    @assert maximum([maximum(opMembers) for (_, opMembers) in keys(operatorList)]) ≤ length(collect(keys(stateDict))[1])
+
     # define a dictionary for the final state obtained after applying 
     # the operators on all basis states
     completeOutputState = Dict{BitVector,Float64}()
@@ -120,9 +129,6 @@ end
 
 function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Vector{Tuple{String,Vector{Int64}}}, couplingMatrix::Vector{Vector{Float64}})
 
-    # calculates the matrix form for the skeleton operator `key`. Itself is
-    # a dict, with keys representing quantum numbers (ntot, Sztot) and values
-    # representing matrices for the subspace corresponding to the quantum numbers.
     matrixSet = fetch.([Threads.@spawn generalOperatorMatrix(basisStates, Dict(operator => 1.0)) for operator in operatorList])
     operatorMatrixSet = fetch.([Threads.@spawn broadcastCouplingSet(matrixSet, couplingSet) for couplingSet in couplingMatrix])
     return operatorMatrixSet
@@ -152,6 +158,7 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
     end
     return eigvals, eigvecs
 end
+
 
 function prettyPrint(state::BitVector)
     output = ""
