@@ -1,22 +1,3 @@
-function HubbardDimerMatrix(eps, U, hop_t)
-    hubbardDimerMatrix = Dict()
-    hubbardDimerMatrix[(0, 0)] = [0;;]
-    hubbardDimerMatrix[(1, 1)] = [eps[3] hop_t[1]; hop_t[1] eps[1]]
-    hubbardDimerMatrix[(1, -1)] = [eps[4] hop_t[2]; hop_t[2] eps[2]]
-    hubbardDimerMatrix[(2, 2)] = [eps[1] + eps[3];;]
-    hubbardDimerMatrix[(2, 0)] = (
-                                        [U[2] + sum(eps[3:4]) hop_t[1] -hop_t[2] 0;
-                                         hop_t[1] sum(eps[[1,4]]) 0 hop_t[2];
-                                         -hop_t[2] 0 sum(eps[[2,3]]) -hop_t[1];
-                                         0 hop_t[2] -hop_t[1] sum(eps[[1,2]]) + U[1]]
-                                       )
-    hubbardDimerMatrix[(2, -2)] = [eps[2] + eps[4];;]
-    hubbardDimerMatrix[(3, 1)] = [U[2] + sum(eps[[1,3,4]]) -hop_t[2]; -hop_t[2] U[1] + sum(eps[1:3])]
-    hubbardDimerMatrix[(3, -1)] = [U[2] + sum(eps[2:4]) -hop_t[1]; -hop_t[1] U[1] + sum(eps[[1,2,4]])]
-    hubbardDimerMatrix[(4, 0)] = [sum(eps) + sum(U);;]
-    return hubbardDimerMatrix
-end
-
 @testset "BasisStates" begin
 
     @test BasisStates(1) == Dict((1,1) => [[1]], 
@@ -164,17 +145,7 @@ end
     eps = rand(4)
     hop_t = rand(2)
     U = rand(2)
-    operatorList = Dict{Tuple{String, Vector{Int64}}, Float64}()
-    operatorList[("n", [1])] = eps[1]
-    operatorList[("n", [2])] = eps[2]
-    operatorList[("n", [3])] = eps[3]
-    operatorList[("n", [4])] = eps[4]
-    operatorList[("nn", [1, 2])] = U[1]
-    operatorList[("nn", [3, 4])] = U[2]
-    operatorList[("+-", [1, 3])] = hop_t[1]
-    operatorList[("+-", [3, 1])] = hop_t[1]
-    operatorList[("+-", [2, 4])] = hop_t[2]
-    operatorList[("+-", [4, 2])] = hop_t[2]
+    operatorList = HubbardDimerOplist(eps, U, hop_t)
     computedMatrix = generalOperatorMatrix(basisStates, operatorList)
     comparisonMatrix = HubbardDimerMatrix(eps, U, hop_t)
     @test keys(comparisonMatrix) == keys(computedMatrix)
@@ -189,8 +160,13 @@ end
     eps_arr = [rand(4) for _ in 1:3]
     hop_t_arr = [rand(2) for _ in 1:3]
     U_arr = [rand(2) for _ in 1:3]
-    operatorList = [("n", [1]), ("n", [2]), ("n", [3]), ("n", [4]), ("nn", [1, 2]), ("nn", [3, 4]), ("+-", [1, 3]), ("+-", [3, 1]), ("+-", [2, 4]), ("+-", [4, 2])]
-    couplingMatrix = [[eps_arr[i][1], eps_arr[i][2], eps_arr[i][3], eps_arr[i][4], U_arr[i][1], U_arr[i][2], hop_t_arr[i][1], hop_t_arr[i][1], hop_t_arr[i][2], hop_t_arr[i][2]] for i in 1:3]
+    couplingMatrix = Vector{Float64}[]
+    operatorList = nothing
+    for (eps, hop_t, U) in zip(eps_arr, hop_t_arr, U_arr)
+        operatorTermsValues = HubbardDimerOplist(eps, U, hop_t)
+        operatorList = collect(keys(operatorTermsValues))
+        push!(couplingMatrix, collect(values(operatorTermsValues)))
+    end
     computedMatrixSet = generalOperatorMatrix(basisStates, operatorList, couplingMatrix)
     comparisonMatrixSet = [HubbardDimerMatrix(eps_arr[i], U_arr[i], hop_t_arr[i]) for i in 1:3]
     @test length(computedMatrixSet) == length(comparisonMatrixSet)
@@ -199,32 +175,5 @@ end
         for key in keys(comparisonMatrix)
             @test computedMatrix[key] ≈ comparisonMatrix[key]
         end
-    end
-end
-
-@testset "Spectrum" begin
-    basisStates = BasisStates(4)
-    eps = rand(4)
-    hop_t = rand(2)
-    U = rand(2)
-    operatorList = Dict{Tuple{String, Vector{Int64}}, Float64}()
-    operatorList[("n", [1])] = eps[1]
-    operatorList[("n", [2])] = eps[2]
-    operatorList[("n", [3])] = eps[3]
-    operatorList[("n", [4])] = eps[4]
-    operatorList[("nn", [1, 2])] = U[1]
-    operatorList[("nn", [3, 4])] = U[2]
-    operatorList[("+-", [1, 3])] = hop_t[1]
-    operatorList[("+-", [3, 1])] = hop_t[1]
-    operatorList[("+-", [2, 4])] = hop_t[2]
-    operatorList[("+-", [4, 2])] = hop_t[2]
-    computedMatrix = generalOperatorMatrix(basisStates, operatorList)
-    eigvals, eigvecs = getSpectrum(computedMatrix)
-    comparisonMatrix = HubbardDimerMatrix(eps, U, hop_t)
-    @test keys(comparisonMatrix) == keys(computedMatrix)
-    for key in keys(comparisonMatrix)
-        eigvalTest, eigvecTest = eigen(comparisonMatrix[key])
-        @test eigvals[key] ≈ eigvalTest
-        @test eigvecs[key] ≈ [eigvecTest[:, i] for i in eachindex(eachrow(eigvecTest))]
     end
 end

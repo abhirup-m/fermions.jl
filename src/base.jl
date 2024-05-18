@@ -55,6 +55,7 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Int64, Vector{Int64},
     return basisStates
 end
 
+
 function TransformBit(qubit::Bool, operator::Char)
     @assert operator in ('n', 'h', '+', '-')
     if operator == 'n'
@@ -67,6 +68,7 @@ function TransformBit(qubit::Bool, operator::Char)
         return qubit, 0
     end
 end
+
 
 function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     @assert maximum([maximum(opMembers) for (_, opMembers) in keys(operatorList)]) ≤ length(collect(keys(stateDict))[1])
@@ -133,30 +135,6 @@ function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitAr
     operatorMatrixSet = fetch.([Threads.@spawn broadcastCouplingSet(matrixSet, couplingSet) for couplingSet in couplingMatrix])
     return operatorMatrixSet
 
-end
-
-
-function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tolerance=1e-10, progressEnabled=false)
-    eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}(index => [] for index in keys(hamiltonian))
-    eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}(index => [] for index in keys(hamiltonian))
-    pbar = nothing
-    if progressEnabled
-        pbar = Progress(length(hamiltonian))
-    end
-    for (index, matrix) in collect(hamiltonian)
-        roundedMatrix = round.(matrix, digits=trunc(Int, -log10(tolerance)))
-        F = eigen(Hermitian(roundedMatrix))
-        eigvalues = F.values
-        eigvals[index] = sort(eigvalues)
-        eigvecs[index] = [F.vectors[:, i] for i in sortperm(eigvalues)]
-        if !isnothing(pbar)
-            next!(pbar)
-        end
-    end
-    if !isnothing(pbar)
-        finish!(pbar)
-    end
-    return eigvals, eigvecs
 end
 
 
