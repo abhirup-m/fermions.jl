@@ -70,7 +70,7 @@ function kondoKSpace(dispersionDictArray::Vector{Dict{Int64,Float64}}, kondoDict
     operatorListSet = Tuple{String,Vector{Int64}}[]
     couplingMatrix = Vector{Float64}[]
     for (dispersionDict, kondoDict, bathIntDict) in zip(dispersionDictArray, kondoDictArray, bathIntDictArray)
-        operatorList = kondoKSpace(dispersionDict, kondoDict, bathIntDict)
+        operatorList = kondoKSpace(dispersionDict, kondoDict, bathIntDict; tolerance=tolerance)
         if isempty(operatorListSet)
             operatorListSet = collect(keys(operatorList))
         end
