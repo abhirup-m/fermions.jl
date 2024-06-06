@@ -99,9 +99,9 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
             end
             if newCoefficient != 0
                 if newState in keys(completeOutputState)
-                    completeOutputState[newState] += opStrength * newCoefficient
+                    @inbounds completeOutputState[newState] += opStrength * newCoefficient
                 else
-                    completeOutputState[newState] = opStrength * newCoefficient
+                    @inbounds completeOutputState[newState] = opStrength * newCoefficient
                 end
             end
         end
@@ -124,7 +124,7 @@ end
 
 
 function broadcastCouplingSet(matrixSet::Vector{Dict{Tuple{Int64,Int64}, Matrix{Float64}}}, couplingSet::Vector{Float64})
-    matrixSetCouplingMultiplied = fetch.([Threads.@spawn ((matrix, coupling) -> Dict(k => v .* coupling for (k, v) in matrix))(matrix, coupling) for (matrix, coupling) in zip(matrixSet, couplingSet)])
+    matrixSetCouplingMultiplied = [Dict(k => v .* coupling for (k, v) in matrix) for (matrix, coupling) in zip(matrixSet, couplingSet)]
     return merge(+, matrixSetCouplingMultiplied...)
 end
 

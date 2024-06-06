@@ -72,12 +72,5 @@ function kondoKSpace(dispersionDictArray::Vector{Dict{Int64,Float64}}, kondoDict
     operatorListResults = fetch.([Threads.@spawn kondoKSpace(args...; tolerance=tolerance) for args in zip(dispersionDictArray, kondoDictArray, bathIntDictArray)])
     operatorListSet = collect(keys(operatorListResults[1]))
     couplingMatrix = [collect(values(operatorList)) for operatorList in operatorListResults]
-    # for (dispersionDict, kondoDict, bathIntDict) in zip(dispersionDictArray, kondoDictArray, bathIntDictArray)
-    #     operatorList = kondoKSpace(dispersionDict, kondoDict, bathIntDict; tolerance=tolerance)
-    #     if isempty(operatorListSet)
-    #         operatorListSet = collect(keys(operatorList))
-    #     end
-    #     push!(couplingMatrix, collect(values(operatorList)))
-    # end
     return operatorListSet, couplingMatrix
 end

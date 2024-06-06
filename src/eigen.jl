@@ -9,8 +9,8 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
         roundedMatrix = round.(matrix, digits=trunc(Int, -log10(tolerance)))
         F = eigen(Hermitian(roundedMatrix))
         eigvalues = F.values
-        eigvals[index] = sort(eigvalues)
-        eigvecs[index] = [F.vectors[:, i] for i in sortperm(eigvalues)]
+        @inbounds eigvals[index] = sort(eigvalues)
+        @inbounds eigvecs[index] = [F.vectors[:, i] for i in sortperm(eigvalues)]
         if !isnothing(pbar)
             next!(pbar)
         end
