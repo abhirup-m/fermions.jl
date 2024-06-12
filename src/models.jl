@@ -1,4 +1,4 @@
-function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{Int64,Int64},Float64}, bathIntDict::Dict{Tuple{Int64,Int64,Int64,Int64},Float64}; tolerance::Float64=1e-16)
+function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{Int64,Int64},Float64}, bathIntDict::Dict{Tuple{Int64,Int64,Int64,Int64},Float64}; bathField::Float64=0.0, tolerance::Float64=1e-16)
     operatorList = Dict{Tuple{String,Vector{Int64}},Float64}()
 
     for (momIndex, energy) in dispersionDict
@@ -62,14 +62,21 @@ function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{
         merge!(+, operatorList, Dict(("+-+-", [upIndices[1:2]; downIndices[3:4]]) => bathIntVal))
 
     end
+
+    # conduction bath magnetic field
+    for i in momenta_indices
+        merge!(+, operatorList, Dict(("n", [2 * i + 1]) => bathField))
+        merge!(+, operatorList, Dict(("n", [2 * i + 2]) => -bathField))
+    end
+
     return operatorList
 end
 
 
-function kondoKSpace(dispersionDictArray::Vector{Dict{Int64,Float64}}, kondoDictArray::Vector{Dict{Tuple{Int64,Int64},Float64}}, bathIntDictArray::Vector{Dict{Tuple{Int64,Int64,Int64,Int64},Float64}}; tolerance::Float64=1e-16)
+function kondoKSpace(dispersionDictArray::Vector{Dict{Int64,Float64}}, kondoDictArray::Vector{Dict{Tuple{Int64,Int64},Float64}}, bathIntDictArray::Vector{Dict{Tuple{Int64,Int64,Int64,Int64},Float64}}; bathField::Float64=0.0, tolerance::Float64=1e-16)
     operatorListSet = Tuple{String,Vector{Int64}}[]
     couplingMatrix = Vector{Float64}[]
-    operatorListResults = fetch.([Threads.@spawn kondoKSpace(args...; tolerance=tolerance) for args in zip(dispersionDictArray, kondoDictArray, bathIntDictArray)])
+    operatorListResults = fetch.([Threads.@spawn kondoKSpace(args...; bathField=bathField, tolerance=tolerance) for args in zip(dispersionDictArray, kondoDictArray, bathIntDictArray)])
     operatorListSet = collect(keys(operatorListResults[1]))
     couplingMatrix = [collect(values(operatorList)) for operatorList in operatorListResults]
     return operatorListSet, couplingMatrix
