@@ -12,7 +12,7 @@ Optionally accepts a parameter totOccupancy that restricts the basis states to o
 those with the specified total occupancy, and a parameter totSpin that does the same
 but for a specified total magnetisation.
 """
-function BasisStates(numLevels::Int64; totOccupancy::Union{Int64, Vector{Int64},Nothing}=nothing)
+function BasisStates(numLevels::Int64; totOccupancy::Union{Int64,Vector{Int64},Nothing}=nothing, localOccupancy::Tuple{Vector{Int64}, Int64}=([1,2], -1))
     @assert numLevels > 0
 
     # if totOccupancy is not set, all occupancies from 0 to N are allowed,
@@ -42,6 +42,9 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Int64, Vector{Int64},
     for totOcc in allowedOccupancies
         totoccMatchingConfigs = allConfigs[sum.(allConfigs).==totOcc]
         for config in totoccMatchingConfigs
+            if localOccupancy[2] != -1 && sum(config[localOccupancy[1]]) ≠ localOccupancy[2]
+                continue
+            end
             sigmaz = sum(config[1:2:end]) - sum(config[2:2:end])
             if !((totOcc, sigmaz) in keys(basisStates))
                 basisStates[(totOcc, sigmaz)] = []
