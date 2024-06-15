@@ -78,8 +78,7 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
     completeOutputState = Dict{BitVector,Float64}()
     # loop over all operator tuples within operatorList
     for ((opType, opMembers), opStrength) in pairs(operatorList)
-
-        for (state, coefficient) in stateDict
+for (state, coefficient) in stateDict
 
             newCoefficient = coefficient
             newState = copy(state)

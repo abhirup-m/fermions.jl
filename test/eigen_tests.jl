@@ -11,7 +11,9 @@
     for key in keys(comparisonMatrix)
         eigvalTest, eigvecTest = eigen(comparisonMatrix[key])
         @test eigvals[key] ≈ eigvalTest
-        @test eigvecs[key] ≈ [eigvecTest[:, i] for i in eachindex(eachrow(eigvecTest))]
+        for v in eigvecs[key] .- [eigvecTest[:, i] for i in eachindex(eachrow(eigvecTest))]
+            @test all(x -> isapprox(x, 0, atol=1e-10), v)
+        end
     end
 end
 
