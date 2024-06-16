@@ -1,53 +1,43 @@
-include("./fermionise.jl")
-
-
-function InitWavefunction(basisStates, hamiltonian, displayGstate=false)
-    eigvals, eigstates = diagonalise(basisStates, hamiltonian)
-    println(eigvals[1:2])
-    # if displayGstate:
-    #     print (visualise_state(basisStates, eigstates[1]))
-    return eigstates[1]
+function InitWavefunction(basisStates, initCouplings, hamiltonianFunction)
+    operatorList = hamiltonianFunction(initCouplings...)
+    hamiltonianMatrix = generalOperatorMatrix(basisStates, operatorList)
+    eigvals, eigstates = getSpectrum(hamiltonianMatrix)
+    gsEnergy, groundStates, blocks = getGstate(eigvals, eigstates)
+    @assert length(blocks) == 1
+    return Dict(zip(basisStates[blocks[1]], groundStates[1]))
 end
 
 
-function ApplyInverseTransform(oldState, numEntangled, unitaryOperatorFunction, alpha, sectors)
-    @assert sectors in ["p", "h", "ph", "hp"] "Provided IOM sectors not among p, h or ph/hp."
+function ApplyInverseTransform(state, unitaryOperatorFunction, alpha, sectors)
+    @assert sectors in ["p", "h", "ph"] "Provided IOM sectors not among p, h or ph/hp."
+    numEntangled = trunc(Int, length(collect(keys(state))[1]) / 2)
     if sectors == "p"
-        oldStateEnlarged = Dict([(key * "11", val) for (key, val) in oldState])
+        state = Dict{keytype(state), valtype(state)}([key; [1, 1]] => val for (key, val) in state)
     elseif sectors == "h"
-        oldStateEnlarged = Dict([(key * "00", val) for (key, val) in oldState])
-    elseif sectors == "ph"
-        oldStateEnlarged = Dict([(key * "1100", val) for (key, val) in oldState])
+        state = Dict{keytype(state), valtype(state)}([key; [0, 0]] => val for (key, val) in state)
     else
-        oldStateEnlarged = Dict([(key * "0011", val) for (key, val) in oldState])
+        state = Dict{keytype(state), valtype(state)}([key; [1, 1, 0, 0]] => val for (key, val) in state)
     end
     unitaryOperatorList = unitaryOperatorFunction(alpha, numEntangled, sectors)
-    newState = copy(oldStateEnlarged)
-    batchSize = 100
-    @showprogress for (basisState, coeff) in oldStateEnlarged
-        for operatorBatch in Iterators.partition(unitaryOperatorList, batchSize)
-            newState = merge(+, newState, merge(+, pmap(ApplyOperatorOnState, [(Dict([(basisState, coeff)]), [operator])
-                                                                               for operator in operatorBatch])...))
-        end
-    end
+    stateRenormalisation = fetch.([Threads.@spawn applyOperatorOnState(state, Dict(k => v)) for (k,v) in unitaryOperatorList])
+    mergewith!(+, state, stateRenormalisation...)
 
-    total_norm = sum(values(newState) .^ 2)^0.5
-    map!(x -> x / total_norm, values(newState))
+    total_norm = sum(values(state) .^ 2)^0.5
+    map!(x -> x / total_norm, values(state))
 
-    return newState
+    return state
 end
 
-function getWavefunctionRG(initCouplings, alphaArray, numEntangled, numReverseSteps, hamiltonianFunction, unitaryOperatorFunction, sectors, displayGstate=false)
-
-    @assert length(alphaArray) >= numReverseSteps "Number of values of 'alpha' is not enough for the requested number of reverse RG steps."
+function getWavefunctionRG(initCouplings, alphaArray, numEntangled::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, sectors::String, displayGstate=false)
+    
+    @assert length(alphaArray) ≥ numReverseSteps "Number of values of 'alpha' is not enough for the requested number of reverse RG steps."
 
     basisStates = BasisStates(2 * (1 + numEntangled))
-    hamiltonianMatrix = hamiltonianFunction(basisStates, numEntangled, initCouplings)
-    initState = InitWavefunction(basisStates, hamiltonianMatrix)
+    initState = InitWavefunction(basisStates, initCouplings, hamiltonianFunction)
     stateFlowArray = [initState]
 
     for (i, alpha) in enumerate(alphaArray[1:numReverseSteps])
-        newState = ApplyInverseTransform(stateFlowArray[end], numEntangled + length(sectors) * (i - 1), unitaryOperatorFunction, alpha, sectors)
+        newState = ApplyInverseTransform(stateFlowArray[end], unitaryOperatorFunction, alpha, sectors)
         push!(stateFlowArray, newState)
     end
 

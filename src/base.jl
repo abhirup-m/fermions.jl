@@ -73,7 +73,7 @@ function TransformBit(qubit::Bool, operator::Char)
 end
 
 
-function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+function applyOperatorOnState(stateDict::Dict, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     @assert maximum([maximum(opMembers) for (_, opMembers) in keys(operatorList)]) ≤ length(collect(keys(stateDict))[1])
 
     # define a dictionary for the final state obtained after applying 
@@ -81,7 +81,8 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
     completeOutputState = Dict{BitVector,Float64}()
     # loop over all operator tuples within operatorList
     for ((opType, opMembers), opStrength) in pairs(operatorList)
-for (state, coefficient) in stateDict
+
+        for (state, coefficient) in stateDict
 
             newCoefficient = coefficient
             newState = copy(state)
