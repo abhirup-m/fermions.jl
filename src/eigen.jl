@@ -40,7 +40,7 @@ end
 function getGstate(basisStates::Dict{Tuple{Int64, Int64}, Vector{BitVector}}, eigvals::Dict{Tuple{Int64,Int64},Vector{Float64}}, eigvecs::Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}})
     gsEnergy = minimum(minimum.(values(eigvals)))
     groundStates = Dict{BitVector, Float64}[]
-    for (basis, eigval, eigvec) in zip(basisStates, eigvals, eigvecs)
+    for (basis, eigval, eigvec) in zip(values(basisStates), values(eigvals), values(eigvecs))
         for vec in eigvec[eigval .≈ gsEnergy]
             push!(groundStates, Dict(zip(basis, vec)))
         end
