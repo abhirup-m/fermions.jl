@@ -23,13 +23,13 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
 end
 
 
-function getGstate(hamiltonianMatrix::Matrix{Float64}; tolerance=1e-16)
+function getGstate(hamiltonianMatrix::Matrix{Float64}; tolerance=1e-10)
     roundedMatrix = round.(hamiltonianMatrix, digits=trunc(Int, -log10(tolerance)))
     F = eigen(Hermitian(roundedMatrix))
     eigvalues = F.values
     groundStates = Vector{Float64}[]
     for (i, E) in enumerate(eigvalues)
-        if E ≈ minimum(eigvalues)
+        if E ≈ minimum(eigvalues) atol=tolerance
             push!(groundStates, F.vectors[:, i])
         end
     end
