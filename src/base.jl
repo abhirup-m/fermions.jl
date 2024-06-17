@@ -157,7 +157,7 @@ function broadcastCouplingSet(matrixSet::Vector{Dict{Tuple{Int64,Int64}, Matrix{
 end
 
 
-function generalOperatorMatrix(basisStates::Union{Dict{Tuple{Int64,Int64},Vector{BitArray}}, Vector{BitArray}}, operatorList::Vector{Tuple{String,Vector{Int64}}}, couplingMatrix::Vector{Vector{Float64}})
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitVector}}, operatorList::Vector{Tuple{String,Vector{Int64}}}, couplingMatrix::Vector{Vector{Float64}})
 
     matrixSet = fetch.([Threads.@spawn generalOperatorMatrix(basisStates, Dict(operator => 1.0)) for operator in operatorList])
     operatorMatrixSet = fetch.([Threads.@spawn broadcastCouplingSet(matrixSet, couplingSet) for couplingSet in couplingMatrix])
