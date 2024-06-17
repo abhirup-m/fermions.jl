@@ -23,27 +23,29 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
 end
 
 
-function getGstate(hamiltonianMatrix; tolerance=1e-16)
+function getGstate(hamiltonianMatrix::Matrix{Float64}; tolerance=1e-16)
     roundedMatrix = round.(hamiltonianMatrix, digits=trunc(Int, -log10(tolerance)))
     F = eigen(Hermitian(roundedMatrix))
     eigvalues = F.values
-    groundStates = [F.vectors[:, i] for (i, E) in enumerate(eigvalues) if E ≈ minimum(eigvalues)]
+    groundStates = Vector{Float64}[]
+    for (i, E) in enumerate(eigvalues)
+        if E ≈ minimum(eigvalues)
+            push!(groundStates, F.vectors[:, i])
+        end
+    end
     return groundStates
 end
 
 
-function getGstate(eigvals::Dict{Tuple{Int64,Int64},Vector{Float64}}, eigvecs::Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}})
+function getGstate(basisStates::Dict{Tuple{Int64, Int64}, Vector{BitVector}}, eigvals::Dict{Tuple{Int64,Int64},Vector{Float64}}, eigvecs::Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}})
     gsEnergy = minimum(minimum.(values(eigvals)))
-    groundStates = Dict{keytype(eigvals), Vector{Vector{Float64}}}()
-    for (block, eigvalsBlock) in eigvals
-        for state in eigvecs[block][eigvalsBlock .≈ gsEnergy]
-            if block ∉ keys(groundStates)
-                groundStates[block] = []
-            end
-            push!(groundStates[block], state)
+    groundStates = Dict{BitVector, Float64}[]
+    for (basis, eigval, eigvec) in zip(basisStates, eigvals, eigvecs)
+        for vec in eigvec[eigval .≈ gsEnergy]
+            push!(groundStates, Dict(zip(basis, vec)))
         end
     end
-    return gsEnergy, groundStates
+    return groundStates
 end
 
 
