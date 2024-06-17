@@ -1,6 +1,7 @@
 function gstateCorrelation(gstates::Vector{Dict{BitVector, Float64}}, correlationOperator::Dict{Tuple{String,Vector{Int64}},Float64})
     correlationResult = 0
     for state in gstates
+        @assert sum(collect(values(state)) .^ 2) ≈ 1
         opOnState = applyOperatorOnState(state, correlationOperator)
         stateCorr = 0
         for (bstate, coeff) in opOnState
