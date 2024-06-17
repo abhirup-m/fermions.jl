@@ -2,11 +2,13 @@ function gstateCorrelation(gstates::Vector{Dict{BitVector, Float64}}, correlatio
     correlationResult = 0
     for state in gstates
         opOnState = applyOperatorOnState(state, correlationOperator)
+        stateCorr = 0
         for (bstate, coeff) in opOnState
-            correlationResult += bstate ∈ keys(state) ? coeff * state[bstate] : 0
+            stateCorr += bstate ∈ keys(state) ? coeff * state[bstate] : 0
         end
+        correlationResult += abs(stateCorr) / length(gstates)
     end
-    return correlationResult / length(gstates)
+    return correlationResult
 end
 
 
