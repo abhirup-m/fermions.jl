@@ -1,5 +1,5 @@
 using LinearAlgebra
-function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tolerance=1e-10, progressEnabled=false)
+function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tolerance=1e-16, progressEnabled=false)
     eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}(index => [] for index in keys(hamiltonian))
     eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}(index => [] for index in keys(hamiltonian))
     pbar = nothing
@@ -23,17 +23,27 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
 end
 
 
+function getGstate(hamiltonianMatrix; tolerance=1e-16)
+    roundedMatrix = round.(hamiltonianMatrix, digits=trunc(Int, -log10(tolerance)))
+    F = eigen(Hermitian(roundedMatrix))
+    eigvalues = F.values
+    groundStates = [F.vectors[:, i] for (i, E) in enumerate(eigvalues) if E ≈ minimum(eigvalues)]
+    return groundStates
+end
+
+
 function getGstate(eigvals::Dict{Tuple{Int64,Int64},Vector{Float64}}, eigvecs::Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}})
     gsEnergy = minimum(minimum.(values(eigvals)))
-    groundStates = Vector{Float64}[]
-    blocks = keytype(eigvals)[]
+    groundStates = Dict{keytype(eigvals), Vector{Vector{Float64}}}()
     for (block, eigvalsBlock) in eigvals
-        for (i, _) in enumerate(eigvalsBlock[eigvalsBlock .≈ gsEnergy])
-            push!(groundStates, eigvecs[block][i])
-            push!(blocks, block)
+        for state in eigvecs[block][eigvalsBlock .≈ gsEnergy]
+            if block ∉ keys(groundStates)
+                groundStates[block] = []
+            end
+            push!(groundStates[block], state)
         end
     end
-    return gsEnergy, groundStates, blocks
+    return gsEnergy, groundStates
 end
 
 

@@ -12,8 +12,8 @@ Optionally accepts a parameter totOccupancy that restricts the basis states to o
 those with the specified total occupancy, and a parameter totSpin that does the same
 but for a specified total magnetisation.
 """
-function BasisStates(numLevels::Int64; totOccupancy::Union{Int64,Vector{Int64},Nothing}=nothing, localOccupancy::Tuple{Vector{Int64}, Int64}=([1,2], -1))
-    @assert numLevels > 0
+function BasisStates(numLevels::Int64; totSz::Union{Int64,Vector{Int64},Nothing}=nothing, totOccupancy::Union{Int64,Vector{Int64},Nothing}=nothing, localOccupancy::Tuple{Vector{Int64}, Int64}=([1,2], -1))
+    @assert numLevels > 0 && numLevels % 2 == 0
 
     # if totOccupancy is not set, all occupancies from 0 to N are allowed,
     # otherwise use only the provided totOccupancy
@@ -27,9 +27,21 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Int64,Vector{Int64},N
         allowedOccupancies = [totOccupancy]
     end
 
+    # same for total Sz
+    numSites = trunc(Int, numLevels / 2)
+    if isnothing(totSz)
+        allowedSz = -numSites:1:numSites
+    elseif typeof(totSz) == Vector{Int64}
+        @assert all(-numSites .<= totSz .<= numSites)
+        allowedSz = totSz
+    else
+        @assert all(-numSites <= totSz <= numSites)
+        allowedSz = [totSz]
+    end
+
     # create dictionary to store configurations classified by their total occupancies.
     # For eg, basisStates = {0: [[0, 0]], 1: [[1, 0], [0, 1]], 2: [[1, 1]]}}
-    basisStates = Dict{Tuple{Int64,Int64},Vector{BitArray}}()
+    basisStates = Dict{Tuple{Int64,Int64},Vector{BitVector}}()
 
     # generate all possible configs, by running integers from 0 to 2^N-1, and converting
     # them to binary forms
@@ -39,9 +51,11 @@ function BasisStates(numLevels::Int64; totOccupancy::Union{Int64,Vector{Int64},N
     # classified by their total occupancies. We will also store the subdimensions
     # while we are creating the dictionary.
 
-    for totOcc in allowedOccupancies
-        totoccMatchingConfigs = allConfigs[sum.(allConfigs).==totOcc]
-        for config in totoccMatchingConfigs
+    for (totSz, totOcc) in Iterators.product(allowedSz, allowedOccupancies)
+        totOccArr = sum.(allConfigs)
+        totSzArr = [sum(config[1:2:end]) - sum(config[2:2:end]) for config in allConfigs]
+        allowedConfigs = allConfigs[(totOccArr .== totOcc) .& (totSzArr .== totSz)]
+        for config in allowedConfigs
             if localOccupancy[2] != -1 && sum(config[localOccupancy[1]]) ≠ localOccupancy[2]
                 continue
             end
@@ -73,7 +87,7 @@ function TransformBit(qubit::Bool, operator::Char)
 end
 
 
-function applyOperatorOnState(stateDict::Dict, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     @assert maximum([maximum(opMembers) for (_, opMembers) in keys(operatorList)]) ≤ length(collect(keys(stateDict))[1])
 
     # define a dictionary for the final state obtained after applying 
@@ -113,7 +127,18 @@ function applyOperatorOnState(stateDict::Dict, operatorList::Dict{Tuple{String,V
 end
 
 
-function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+function generalOperatorMatrix(basisStates::Vector{BitVector}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+    operatorFullMatrix = zeros(length(basisStates), length(basisStates))
+    for (index, state) in collect(enumerate(basisStates))
+        for (nState, coeff) in applyOperatorOnState(Dict(state => 1.0), operatorList)
+            operatorFullMatrix[index, basisStates.==[nState]] .= coeff
+        end
+    end
+    return operatorFullMatrix
+end
+
+
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitVector}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
     for (key, bstates) in collect(basisStates)
         for (index, state) in collect(enumerate(bstates))
@@ -132,7 +157,7 @@ function broadcastCouplingSet(matrixSet::Vector{Dict{Tuple{Int64,Int64}, Matrix{
 end
 
 
-function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, operatorList::Vector{Tuple{String,Vector{Int64}}}, couplingMatrix::Vector{Vector{Float64}})
+function generalOperatorMatrix(basisStates::Union{Dict{Tuple{Int64,Int64},Vector{BitArray}}, Vector{BitArray}}, operatorList::Vector{Tuple{String,Vector{Int64}}}, couplingMatrix::Vector{Vector{Float64}})
 
     matrixSet = fetch.([Threads.@spawn generalOperatorMatrix(basisStates, Dict(operator => 1.0)) for operator in operatorList])
     operatorMatrixSet = fetch.([Threads.@spawn broadcastCouplingSet(matrixSet, couplingSet) for couplingSet in couplingMatrix])

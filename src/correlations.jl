@@ -1,21 +1,12 @@
-function gstateCorrelation(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, eigvals::Dict{Tuple{Int64,Int64},Vector{Float64}}, eigvecs::Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}, correlationOperator::Dict{Tuple{String,Vector{Int64}},Float64})
-    gsEnergy, groundStates, blocks = getGstate(eigvals, eigvecs)
-    correlationMatrix = generalOperatorMatrix(basisStates, correlationOperator)
-    correlationArray = [state' * correlationMatrix[block] * state for (state, block) in zip(groundStates, blocks)]
-    correlationResult = sum(abs.(correlationArray) ./ length(correlationArray))
-    return correlationResult
-end
-
-
-function gstateCorrelation(basisStates::Dict{Tuple{Int64,Int64},Vector{BitArray}}, eigvals::Dict{Tuple{Int64,Int64},Vector{Float64}}, eigvecs::Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}, correlationOperatorList::Vector{Dict{Tuple{String,Vector{Int64}},Float64}})
-    gsEnergy, groundStates, blocks = getGstate(eigvals, eigvecs)
-    correlationResults = zeros(length(correlationOperatorList))
-    Threads.@threads for (i, correlationOperator) in collect(enumerate(correlationOperatorList))
-        correlationMatrix = generalOperatorMatrix(basisStates, correlationOperator)
-        correlationArray = [state' * correlationMatrix[block] * state for (state, block) in zip(groundStates, blocks)]
-        correlationResults[i] = sum(abs.(correlationArray) ./ length(correlationArray))
+function gstateCorrelation(gstates::Vector{Dict{BitVector, Float64}}, correlationOperator::Dict{Tuple{String,Vector{Int64}},Float64})
+    correlationResult = 0
+    for state in gstates
+        opOnState = applyOperatorOnState(state, correlationOperator)
+        for (bstate, coeff) in opOnState
+            correlationResult += bstate ∈ keys(state) ? coeff * state[bstate] : 0
+        end
     end
-    return correlationResults
+    return correlationResult / length(gstates)
 end
 
 

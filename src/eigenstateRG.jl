@@ -1,10 +1,9 @@
-function InitWavefunction(basisStates, initCouplings, hamiltonianFunction)
+function InitWavefunction(basisStates::Vector{BitVector}, initCouplings, hamiltonianFunction)
     operatorList = hamiltonianFunction(initCouplings...)
     hamiltonianMatrix = generalOperatorMatrix(basisStates, operatorList)
-    eigvals, eigstates = getSpectrum(hamiltonianMatrix)
-    gsEnergy, groundStates, blocks = getGstate(eigvals, eigstates)
-    @assert length(blocks) == 1
-    return Dict(zip(basisStates[blocks[1]], groundStates[1]))
+    groundStates = getGstate(hamiltonianMatrix)
+    @assert length(groundStates) == 1
+    return Dict(zip(basisStates, groundStates[1]))
 end
 
 
@@ -28,13 +27,15 @@ function ApplyInverseTransform(state, unitaryOperatorFunction, alpha, sectors)
     return state
 end
 
-function getWavefunctionRG(initCouplings, alphaArray, numEntangled::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, sectors::String, displayGstate=false)
+function getWavefunctionRG(basisFunction, initCouplings, alphaArray, numEntangled::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, sectors::String, displayGstate=false)
     
     @assert length(alphaArray) ≥ numReverseSteps "Number of values of 'alpha' is not enough for the requested number of reverse RG steps."
-
-    basisStates = BasisStates(2 * (1 + numEntangled))
+    basisStates = basisFunction(2 * numEntangled + 2)
+    @assert length(basisStates) == 1
+    basisStates = collect(values(basisStates))[1]
     initState = InitWavefunction(basisStates, initCouplings, hamiltonianFunction)
-    stateFlowArray = [initState]
+    stateFlowArray = Dict{BitVector, Float64}[]
+    push!(stateFlowArray, initState)
 
     for (i, alpha) in enumerate(alphaArray[1:numReverseSteps])
         newState = ApplyInverseTransform(stateFlowArray[end], unitaryOperatorFunction, alpha, sectors)
@@ -42,4 +43,20 @@ function getWavefunctionRG(initCouplings, alphaArray, numEntangled::Integer, num
     end
 
     return stateFlowArray
+end
+
+
+function correlationRG(basisFunction, stateFlowArray::Vector{Dict{BitVector, Float64}}, correlationOperators)
+    numLevelsArr = [length(collect(keys(state))[1]) for state in stateFlowArray]
+    correlationRGResults = [Float64[] for _ in correlationOperators]
+    for state in stateFlowArray
+        for (i, operator) in enumerate(correlationOperators)
+            push!(correlationRGResults[i], 0)
+            MPsi = applyOperatorOnState(state, operator)
+            for (bstate, coeff) in MPsi
+                correlationRGResults[i][end] += bstate ∈ keys(state) ? coeff * state[bstate] : 0
+            end
+        end
+    end
+    return correlationRGResults
 end
