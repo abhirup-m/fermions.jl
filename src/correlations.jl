@@ -13,8 +13,8 @@ function gstateCorrelation(gstates::Vector{Dict{BitVector, Float64}}, correlatio
 end
 
 
-function vnEntropy(basisStates::Vector{BitArray}, groundState::Vector{Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
-    reducedDMatrix = reducedDM(basisStates, groundState, reducingIndices; reducingConfigs=reducingConfigs)
+function vnEntropy(groundState::Dict{BitVector, Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
+    reducedDMatrix = reducedDM(groundState, reducingIndices; reducingConfigs=reducingConfigs)
     eigenvalues = eigvals(Hermitian(reducedDMatrix))
     eigenvalues[eigenvalues .< 1e-16] .= 0
     @assert all(x -> x ≥ 0, eigenvalues)
@@ -22,15 +22,15 @@ function vnEntropy(basisStates::Vector{BitArray}, groundState::Vector{Float64}, 
 end
 
 
-function mutInfo(basisStates::Vector{BitArray}, 
-        groundState::Vector{Float64}, 
+function mutInfo(
+        groundState::Dict{BitVector, Float64}, 
         reducingIndices::Tuple{Vector{Int64}, Vector{Int64}};
         reducingConfigs::Tuple{Vector{BitVector}, Vector{BitVector}}=(BitVector[], BitVector[])
     )
     combinedConfigs = vec([[c1; c2] for (c1, c2) in Iterators.product(reducingConfigs...)])
-    SEE_A = vnEntropy(basisStates, groundState, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
-    SEE_B = vnEntropy(basisStates, groundState, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
-    SEE_AB = vnEntropy(basisStates, groundState, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
+    SEE_A = vnEntropy(groundState, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
+    SEE_B = vnEntropy(groundState, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
+    SEE_AB = vnEntropy(groundState, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
     println((SEE_A, SEE_B, SEE_AB))
     return SEE_A + SEE_B - SEE_AB
 end

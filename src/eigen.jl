@@ -54,15 +54,15 @@ function getGstate(basisStates::Dict{Tuple{Int64, Int64}, Vector{BitVector}}, ei
 end
 
 
-function reducedDM(basisStates::Vector{BitArray}, groundState::Vector{Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
-    nonReducingIndices = setdiff(1:length(basisStates[1]), reducingIndices)
+function reducedDM(groundState::Dict{BitVector, Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
+    nonReducingIndices = setdiff(1:length(collect(keys(groundState))[1]), reducingIndices)
     if length(reducingConfigs) == 0
         reducingConfigs = [collect(config) for config in Iterators.product(fill([1, 0], length(reducingIndices))...)]
     end
     nonReducingConfigs = vec(collect(Iterators.product(fill([1, 0], length(nonReducingIndices))...)))
     reducingCoeffs = Dict{BitVector, Dict{BitVector, Float64}}(BitVector(config) => Dict(BitVector(configPrime) => 0.0 
                                                                         for configPrime in nonReducingConfigs) for config in reducingConfigs)
-    for (state, coeff) in zip(basisStates, groundState)
+    for (state, coeff) in groundState
         if state[reducingIndices] ∈ reducingConfigs
             reducingCoeffs[state[reducingIndices]][state[nonReducingIndices]] += coeff
         end
