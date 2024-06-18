@@ -22,6 +22,11 @@ function vnEntropy(groundState::Dict{BitVector, Float64}, reducingIndices::Vecto
 end
 
 
+function vnEntropy(gstates::Vector{Dict{BitVector, Float64}}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
+    return sum(abs.([vnEntropy(gstate, reducingIndices) for gstate in gstates])) / length(gstates)
+end
+
+
 function mutInfo(
         groundState::Dict{BitVector, Float64}, 
         reducingIndices::Tuple{Vector{Int64}, Vector{Int64}};
