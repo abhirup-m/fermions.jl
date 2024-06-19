@@ -36,7 +36,6 @@ function mutInfo(
     SEE_A = vnEntropy(groundState, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
     SEE_B = vnEntropy(groundState, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
     SEE_AB = vnEntropy(groundState, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
-    println((SEE_A, SEE_B, SEE_AB))
     return SEE_A + SEE_B - SEE_AB
 end
 
