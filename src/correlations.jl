@@ -39,3 +39,14 @@ function mutInfo(
     println((SEE_A, SEE_B, SEE_AB))
     return SEE_A + SEE_B - SEE_AB
 end
+
+
+function mutInfo(
+        gstates::Vector{Dict{BitVector, Float64}}, 
+        reducingIndices::Tuple{Vector{Int64}, Vector{Int64}};
+        reducingConfigs::Tuple{Vector{BitVector}, Vector{BitVector}}=(BitVector[], BitVector[])
+    )
+    return sum(abs.([mutInfo(gstate, reducingIndices) for gstate in gstates])) / length(gstates)
+end
+
+
