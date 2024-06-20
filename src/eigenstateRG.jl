@@ -28,7 +28,7 @@ function ApplyInverseTransform(state, unitaryOperatorFunction, alpha, sectors)
     return state
 end
 
-function getWavefunctionRG(basisFunction, initCouplings, alphaArray, numEntangled::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, sectors::String, displayGstate=false)
+function getWavefunctionRG(basisFunction, initCouplings, numEntangled::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, stateExpansionFunction, sectors::String, displayGstate=false)
     
     @assert length(alphaArray) ≥ numReverseSteps "Number of values of 'alpha' is not enough for the requested number of reverse RG steps."
     basisStates = basisFunction(2 * numEntangled + 2)
@@ -38,8 +38,14 @@ function getWavefunctionRG(basisFunction, initCouplings, alphaArray, numEntangle
     stateFlowArray = Dict{BitVector, Float64}[]
     push!(stateFlowArray, initState)
 
-    for (i, alpha) in enumerate(alphaArray[1:numReverseSteps])
-        newState = ApplyInverseTransform(stateFlowArray[end], unitaryOperatorFunction, alpha, sectors)
+    for step in 1:numReverseSteps
+        newState = stateExpansionFunction(stateFlowArray[end]) #ApplyInverseTransform(stateFlowArray[end], unitaryOperatorFunction, alpha, sectors)
+        unitaryOperatorList = unitaryOperatorFunction(step)
+        stateRenormalisation = fetch.([Threads.@spawn applyOperatorOnState(newState, Dict(k => v)) for (k,v) in unitaryOperatorList])
+        mergewith!(+, newState, newStateRenormalisation...)
+
+        total_norm = sum(values(newState) .^ 2)^0.5
+        map!(x -> x / total_norm, values(newState))
         push!(stateFlowArray, newState)
     end
 
