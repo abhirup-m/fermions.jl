@@ -129,7 +129,7 @@ end
 
 function generalOperatorMatrix(basisStates::Vector{BitVector}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = zeros(length(basisStates), length(basisStates))
-    for (index, state) in collect(enumerate(basisStates))
+    for (index, state) in enumerate(basisStates)
         for (nState, coeff) in applyOperatorOnState(Dict(state => 1.0), operatorList)
             operatorFullMatrix[index, basisStates.==[nState]] .= coeff
         end
@@ -140,9 +140,22 @@ end
 
 function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitVector}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
-    for (key, bstates) in collect(basisStates)
-        for (index, state) in collect(enumerate(bstates))
+    for (key, bstates) in basisStates
+        for (index, state) in enumerate(bstates)
             for (nState, coeff) in applyOperatorOnState(Dict(state => 1.0), operatorList)
+                operatorFullMatrix[key][index, bstates.==[nState]] .= coeff
+            end
+        end
+    end
+    return operatorFullMatrix
+end
+
+
+function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+    operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
+    for (key, bstates) in basisStates
+        for (index, state) in enumerate(bstates)
+            for (nState, coeff) in applyOperatorOnState(state, operatorList)
                 operatorFullMatrix[key][index, bstates.==[nState]] .= coeff
             end
         end

@@ -28,10 +28,10 @@ function ApplyInverseTransform(state, unitaryOperatorFunction, alpha, sectors)
     return state
 end
 
-function getWavefunctionRG(basisFunction, initCouplings, numEntangled::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, stateExpansionFunction, sectors::String, displayGstate=false)
+function getWavefunctionRG(basisFunction, initCouplings, numEntangledSites::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, stateExpansionFunction, sectors::String, displayGstate=false)
     
     @assert length(alphaArray) ≥ numReverseSteps "Number of values of 'alpha' is not enough for the requested number of reverse RG steps."
-    basisStates = basisFunction(2 * numEntangled + 2)
+    basisStates = basisFunction(numEntangledSites)
     @assert length(basisStates) == 1
     basisStates = collect(values(basisStates))[1]
     initState = InitWavefunction(basisStates, initCouplings, hamiltonianFunction)
