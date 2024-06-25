@@ -8,11 +8,9 @@ function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{
     end
 
     momenta_indices = 1:length(dispersionDict)
-    indicesRepeatedTwice = ntuple(x -> momenta_indices, 2)
-    indicesRepeatedFour = ntuple(x -> momenta_indices, 4)
 
     # Kondo terms, for all pairs of momenta
-    for k_index_pair in Iterators.product(indicesRepeatedTwice...)
+    for (k_index_pair, kondoIntVal) in kondoDict
 
         # get the up and down indices for both momenta
         k_UpIndex1, k_UpIndex2 = 2 .* k_index_pair .+ 1
@@ -20,7 +18,6 @@ function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{
         impUpIndex = 1
         impDownIndex = 2
 
-        kondoIntVal = kondoDict[k_index_pair...]
         kondoIntVal = abs(kondoIntVal) > tolerance ? kondoIntVal : 0
         if kondoIntVal == 0
             continue
@@ -47,8 +44,7 @@ function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{
     end
 
     # bath interaction terms, for all quartets of momenta
-    for index4tuples in Iterators.product(indicesRepeatedFour...)
-        bathIntVal = bathIntDict[index4tuples...]
+    for (index4tuples, bathIntVal) in bathIntDict
         bathIntVal = abs(bathIntVal) > tolerance ? bathIntVal : 0
         if bathIntVal == 0
             continue
