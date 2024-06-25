@@ -1,5 +1,5 @@
 using LinearAlgebra
-function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tolerance=1e-16, progressEnabled=false)
+function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tolerance=1e-16, maxNum=0, progressEnabled=false)
     eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}(index => [] for index in keys(hamiltonian))
     eigvecs = Dict{Tuple{Int64,Int64},Vector{Vector{Float64}}}(index => [] for index in keys(hamiltonian))
     pbar = nothing
@@ -10,8 +10,9 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
         roundedMatrix = round.(matrix, digits=trunc(Int, -log10(tolerance)))
         F = eigen(Hermitian(roundedMatrix))
         eigvalues = F.values
-        @inbounds eigvals[index] = sort(eigvalues)
-        @inbounds eigvecs[index] = [F.vectors[:, i] for i in sortperm(eigvalues)]
+        maxNum = ifelse(maxNum == 0, length(eigvalues), maxNum)
+        @inbounds eigvals[index] = sort(eigvalues)[1:maxNum]
+        @inbounds eigvecs[index] = [F.vectors[:, i] for i in sortperm(eigvalues)[1:maxNum]]
         if !isnothing(pbar)
             next!(pbar)
         end
