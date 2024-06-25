@@ -1,23 +1,27 @@
-function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{Int64,Int64},Float64}, bathIntDict::Dict{Tuple{Int64,Int64,Int64,Int64},Float64}; bathField::Float64=0.0, tolerance::Float64=1e-16)
+function kondoKSpace(sequence::Vector{Int64}, dispersion::Vector{Float64}, kondoJArray::Array{Float64,3}, bathIntFunc; specialIndices=Int64[], tolerance::Float64=1e-16)
+    specialIndices = ifelse(isempty(specialIndices), sequence, specialIndices)
     operatorList = Dict{Tuple{String,Vector{Int64}},Float64}()
 
-    for (momIndex, energy) in dispersionDict
+    for (momIndex, index) in enumerate(specialIndices)
+        energy = dispersion[index]
         energy = abs(energy) > tolerance ? energy : 0
         merge!(+, operatorList, Dict(("n", [2 * momIndex + 1]) => energy))
         merge!(+, operatorList, Dict(("n", [2 * momIndex + 2]) => energy))
     end
 
-    momenta_indices = 1:length(dispersionDict)
-
     # Kondo terms, for all pairs of momenta
-    for (k_index_pair, kondoIntVal) in kondoDict
-
+    for (i1, index1) in enumerate(sequence) for (i2, index2) in enumerate(sequence)
+        if index1 ∉ specialIndices && index2 ∉ specialIndices
+            continue
+        end
+        k_index_pair = (i1, i2)
         # get the up and down indices for both momenta
         k_UpIndex1, k_UpIndex2 = 2 .* k_index_pair .+ 1
         k_DownIndex1, k_DownIndex2 = 2 .* k_index_pair .+ 2
         impUpIndex = 1
         impDownIndex = 2
 
+        kondoIntVal = kondoJArray[index1, index2, end]
         kondoIntVal = abs(kondoIntVal) > tolerance ? kondoIntVal : 0
         if kondoIntVal == 0
             continue
@@ -41,10 +45,15 @@ function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{
         # 1/2 c^†_{d ↓} c_{d ↑} c^†_{k1 ↑} c_{k2 ↓}
         merge!(+, operatorList, Dict(("+-+-", [impDownIndex, impUpIndex, k_UpIndex1, k_DownIndex2]) => 0.5 * kondoIntVal))
 
-    end
+    end end
 
     # bath interaction terms, for all quartets of momenta
-    for (index4tuples, bathIntVal) in bathIntDict
+    for (i1, index1) in enumerate(sequence) for (i2, index2) in enumerate(sequence) for (i3, index3) in enumerate(sequence) for (i4, index4) in enumerate(sequence)
+        index4tuples = (index1, index2, index3, index4)
+        if isempty(intersect(index4tuples, specialIndices))
+            continue
+        end
+        bathIntVal = bathIntFunc(index4tuples)
         bathIntVal = abs(bathIntVal) > tolerance ? bathIntVal : 0
         if bathIntVal == 0
             continue
@@ -63,13 +72,7 @@ function kondoKSpace(dispersionDict::Dict{Int64,Float64}, kondoDict::Dict{Tuple{
         # W_{1,2,3,4} c^†_{1 ↑} c_{2, ↑} c^†_{3 ↓} c_{4, ↓}
         merge!(+, operatorList, Dict(("+-+-", [upIndices[1:2]; downIndices[3:4]]) => bathIntVal))
 
-    end
-
-    # conduction bath magnetic field
-    for i in momenta_indices
-        merge!(+, operatorList, Dict(("n", [2 * i + 1]) => bathField))
-        merge!(+, operatorList, Dict(("n", [2 * i + 2]) => -bathField))
-    end
+    end end end end
 
     return operatorList
 end
