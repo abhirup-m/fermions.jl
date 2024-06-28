@@ -6,7 +6,6 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
     if progressEnabled
         pbar = Progress(length(hamiltonian))
     end
-    println(length(hamiltonian))
     @time spectra = Dict(zip(keys(hamiltonian), 
                        fetch.([Threads.@spawn eigen(Hermitian(round.(matrix, digits=trunc(Int, -log10(tolerance)))))
                                for matrix in values(hamiltonian)])

@@ -129,9 +129,10 @@ end
 
 function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
-    Threads.@threads for (key, bstates) in collect(basisStates)
+    for (key, bstates) in collect(basisStates)
         for (index, state) in enumerate(bstates)
             for (nState, coeff) in applyOperatorOnState(state, operatorList)
+                println(bstates, nState)
                 operatorFullMatrix[key][index, bstates.==[nState]] .= coeff
             end
         end
@@ -173,7 +174,7 @@ function prettyPrint(state::BitVector)
 end
 
 
-function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Integer; sectors::Vector{Tuple{Integer, Integer}}=[])
+function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Int64; totOccReq::Vector{Int64}=[], totSzReq::Vector{Int64}=[])
     @assert numAdditionalSites > 0
     newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
     for (key, basisArr) in basisStates
@@ -185,7 +186,7 @@ function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVecto
                 totOcc = sum(newBitVecs[1])
                 totSz = sum(newBitVecs[1][1:2:end]) - sum(newBitVecs[1][2:2:end])
                 newKey = (totOcc, totSz)
-                if !isempty(sector) && newKey ∉ sectors
+                if (!isempty(totOccReq) && totOcc ∉ totOccReq) || (!isempty(totSzReq) && totSz ∉ totSzReq)
                     continue
                 end
                 if newKey ∉ keys(newBasisStates)
