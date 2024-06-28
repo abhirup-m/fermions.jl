@@ -85,7 +85,7 @@ function iterativeDiagonaliser(
     @assert length(hamiltonianFamily) == length(numStatesFamily)
     spectrumFamily = []
     basisStates = initBasis
-    for (i, hamiltonian) in enumerate(hamiltonianFamily)
+    @showprogress for (i, hamiltonian) in enumerate(hamiltonianFamily)
         hamiltonianMatrix = fermions.generalOperatorMatrix(basisStates, hamiltonian)
         spectrum = fermions.getSpectrum(hamiltonianMatrix; maxNum=retainSize)
         push!(spectrumFamily, spectrum)
