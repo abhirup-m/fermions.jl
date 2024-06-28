@@ -197,14 +197,14 @@ function prettyPrint(state::BitVector)
 end
 
 
-function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditional::Integer)
-    @assert numAdditional > 0
+function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Integer)
+    @assert numAdditionalSites > 0
     newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
     for (key, basisArr) in basisStates
         for basisStateDict in basisArr
             BitVecs = collect(keys(basisStateDict))
             coeffs = collect(values(basisStateDict))
-            for newBitCombination in Iterators.product(repeat([(0,1),], 2 * numAdditional)...)
+            for newBitCombination in Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...)
                 newBitVecs = [vcat(state, collect(newBitCombination)) for state in BitVecs]
                 totOcc = sum(newBitVecs[1])
                 totSz = sum(newBitVecs[1][1:2:end]) - sum(newBitVecs[1][2:2:end])
