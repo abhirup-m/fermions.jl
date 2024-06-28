@@ -83,16 +83,17 @@ function iterativeDiagonaliser(
         retainSize::Int64
     )
     @assert length(hamiltonianFamily) == length(numStatesFamily)
-    spectrum = nothing
+    spectrumFamily = []
     basisStates = initBasis
     @showprogress for (i, hamiltonian) in enumerate(hamiltonianFamily)
         hamiltonianMatrix = fermions.generalOperatorMatrix(basisStates, hamiltonianDefinition)
         spectrum = fermions.getSpectrum(hamiltonianMatrix; maxNum=retainSize)
+        push!(spectrumFamily, spectrum)
         @assert keys(basisStates) == keys(spectrum[1]) == keys(spectrum[2])
         basisStates = transformBasis(basisStates, spectrum[2])
         if i < length(numStatesFamily)
             basisStates = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i])
         end
     end
-    return spectrum
+    return spectrumFamily
 end
