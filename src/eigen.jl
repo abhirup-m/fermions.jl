@@ -6,9 +6,13 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
     if progressEnabled
         pbar = Progress(length(hamiltonian))
     end
-    for (index, matrix) in collect(hamiltonian)
-        roundedMatrix = round.(matrix, digits=trunc(Int, -log10(tolerance)))
-        F = eigen(Hermitian(roundedMatrix))
+    println(length(hamiltonian))
+    @time spectra = Dict(zip(keys(hamiltonian), 
+                       fetch.([Threads.@spawn eigen(Hermitian(round.(matrix, digits=trunc(Int, -log10(tolerance)))))
+                               for matrix in values(hamiltonian)])
+                      )
+                  )
+    for (index, F) in spectra
         eigvalues = F.values
         maxNum = ifelse(maxNum == 0, length(eigvalues), minimum((length(eigvalues), maxNum)))
         @inbounds eigvals[index] = sort(eigvalues)[1:maxNum]
