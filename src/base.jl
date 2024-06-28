@@ -222,12 +222,14 @@ end
 
 function transformBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
         transformation::Dict{Tuple{Int64, Int64}, Vector{Vector{Float64}}})
-    newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}(k => [Dict() for d in v] for (k, v) in basisStates)
+    newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
     for k in keys(basisStates)
         if k ∉ keys(transformation)
             transformation[k] = vec([collect(M) for M in eachrow(Matrix(I, length(basisStates[k]), length(basisStates[k])))])
         end
+        newBasisStates[k] = []
         for (i, eigenvector) in enumerate(transformation[k])
+            push!(newBasisStates[k], Dict())
             for (j, multiplier) in enumerate(eigenvector)
                 if multiplier == 0
                     continue
