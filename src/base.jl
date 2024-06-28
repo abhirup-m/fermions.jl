@@ -173,7 +173,7 @@ function prettyPrint(state::BitVector)
 end
 
 
-function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Integer)
+function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Integer; sectors::Vector{Tuple{Integer, Integer}}=[])
     @assert numAdditionalSites > 0
     newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
     for (key, basisArr) in basisStates
@@ -185,6 +185,9 @@ function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVecto
                 totOcc = sum(newBitVecs[1])
                 totSz = sum(newBitVecs[1][1:2:end]) - sum(newBitVecs[1][2:2:end])
                 newKey = (totOcc, totSz)
+                if !isempty(sector) && newKey ∉ sectors
+                    continue
+                end
                 if newKey ∉ keys(newBasisStates)
                     newBasisStates[newKey] = []
                 end
