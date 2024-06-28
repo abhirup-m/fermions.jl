@@ -195,3 +195,42 @@ function prettyPrint(state::BitVector)
     end
     return output
 end
+
+
+function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditional::Integer)
+    @assert numAdditional > 0
+    newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
+    for (key, basisArr) in basisStates
+        for basisStateDict in basisArr
+            BitVecs = collect(keys(basisStateDict))
+            coeffs = collect(values(basisStateDict))
+            for newBitCombination in Iterators.product(repeat([(0,1),], 2 * numAdditional)...)
+                newBitVecs = [vcat(state, collect(newBitCombination)) for state in BitVecs]
+                totOcc = sum(newBitVecs[1])
+                totSz = sum(newBitVecs[1][1:2:end]) - sum(newBitVecs[1][2:2:end])
+                newKey = (totOcc, totSz)
+                if newKey ∉ keys(newBasisStates)
+                    newBasisStates[newKey] = []
+                end
+                push!(newBasisStates[newKey], Dict(zip(newBitVecs, coeffs)))
+            end
+        end
+    end
+    return newBasisStates
+end
+
+
+function transformBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
+        transformation::Dict{Tuple{Int64, Int64}, Vector{Vector{Float64}}})
+    newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}(k => [Dict() for d in v] for (k, v) in basisStates)
+    for k in keys(basisStates)
+        for (i, eigenvector) in enumerate(transformation[k])
+            for (j, multiplier) in enumerate(eigenvector)
+                multipliedValues = multiplier .* collect(values(basisStates[k][j]))
+                multipliedState = Dict(zip(keys(basisStates[k][j]), multipliedValues))
+                mergewith!(+, newBasisStates[k][i], multipliedState)
+            end
+        end
+    end
+    return newBasisStates
+end
