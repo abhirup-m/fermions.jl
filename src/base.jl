@@ -41,7 +41,7 @@ function BasisStates(numLevels::Int64; totSz::Union{Int64,Vector{Int64},Nothing}
 
     # create dictionary to store configurations classified by their total occupancies.
     # For eg, basisStates = {0: [[0, 0]], 1: [[1, 0], [0, 1]], 2: [[1, 1]]}}
-    basisStates = Dict{Tuple{Int64,Int64},Vector{BitVector}}()
+    basisStates = Dict{Tuple{Int64,Int64},Vector{Dict{BitVector, Float64}}}()
 
     # generate all possible configs, by running integers from 0 to 2^N-1, and converting
     # them to binary forms
@@ -64,7 +64,7 @@ function BasisStates(numLevels::Int64; totSz::Union{Int64,Vector{Int64},Nothing}
                 basisStates[(totOcc, sigmaz)] = []
             end
             if length(config) > 0
-                push!(basisStates[(totOcc, sigmaz)], config)
+                push!(basisStates[(totOcc, sigmaz)], Dict(config => 1.0))
             end
         end
     end
@@ -198,7 +198,6 @@ end
 
 
 function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Integer)
-    println("B", basisStates)
     @assert numAdditionalSites > 0
     newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
     for (key, basisArr) in basisStates
@@ -207,8 +206,6 @@ function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVecto
             coeffs = collect(values(basisStateDict))
             for newBitCombination in Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...)
                 newBitVecs = [vcat(state, collect(newBitCombination)) for state in BitVecs]
-                println("1", newBitCombination)
-                println("2", newBitVecs)
                 totOcc = sum(newBitVecs[1])
                 totSz = sum(newBitVecs[1][1:2:end]) - sum(newBitVecs[1][2:2:end])
                 newKey = (totOcc, totSz)
@@ -227,8 +224,14 @@ function transformBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVe
         transformation::Dict{Tuple{Int64, Int64}, Vector{Vector{Float64}}})
     newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}(k => [Dict() for d in v] for (k, v) in basisStates)
     for k in keys(basisStates)
+        if k ∉ keys(transformation)
+            transformation[k] = vec([collect(M) for M in eachrow(Matrix(I, length(basisStates[k]), length(basisStates[k])))])
+        end
         for (i, eigenvector) in enumerate(transformation[k])
             for (j, multiplier) in enumerate(eigenvector)
+                if multiplier == 0
+                    continue
+                end
                 multipliedValues = multiplier .* collect(values(basisStates[k][j]))
                 multipliedState = Dict(zip(keys(basisStates[k][j]), multipliedValues))
                 mergewith!(+, newBasisStates[k][i], multipliedState)
