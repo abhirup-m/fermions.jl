@@ -74,3 +74,23 @@ function reducedDM(groundState::Dict{BitVector, Float64}, reducingIndices::Vecto
     end
     return reducedDMatrix
 end
+
+
+function iterativeDiagonaliser(
+        hamiltonianFamily::Vector{Dict{Tuple{String,Vector{Int64}},Float64}},
+        initBasis::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
+        numStatesFamily::Vector{Int64},
+        retainSize::Int64
+    )
+    @assert length(hamiltonianFamily) == length(numStates)
+    spectrum = nothing
+    basisStates = initBasis
+    @showprogress for (numStates, hamiltonian) in zip(numStatesFamily, hamiltonianFamily)
+        hamiltonianMatrix = fermions.generalOperatorMatrix(basisStates, hamiltonianDefinition)
+        spectrum = fermions.getSpectrum(hamiltonianMatrix; maxNum=retainSize)
+        @assert keys(basisStates) == keys(spectrum[1]) == keys(spectrum[2])
+        basisStates = transformBasis(basisStates, spectrum[2])
+        basisStates = expandBasis(basisStates, length(numStates))
+    end
+    return spectrum
+end
