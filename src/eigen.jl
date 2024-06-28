@@ -10,7 +10,7 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
         roundedMatrix = round.(matrix, digits=trunc(Int, -log10(tolerance)))
         F = eigen(Hermitian(roundedMatrix))
         eigvalues = F.values
-        maxNum = ifelse(maxNum == 0, length(eigvalues), maxNum)
+        maxNum = ifelse(maxNum == 0, length(eigvalues), minimum((length(eigvalues), maxNum)))
         @inbounds eigvals[index] = sort(eigvalues)[1:maxNum]
         @inbounds eigvecs[index] = [F.vectors[:, i] for i in sortperm(eigvalues)[1:maxNum]]
         if !isnothing(pbar)

@@ -198,6 +198,7 @@ end
 
 
 function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Integer)
+    println("B", basisStates)
     @assert numAdditionalSites > 0
     newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
     for (key, basisArr) in basisStates
@@ -206,6 +207,8 @@ function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVecto
             coeffs = collect(values(basisStateDict))
             for newBitCombination in Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...)
                 newBitVecs = [vcat(state, collect(newBitCombination)) for state in BitVecs]
+                println("1", newBitCombination)
+                println("2", newBitVecs)
                 totOcc = sum(newBitVecs[1])
                 totSz = sum(newBitVecs[1][1:2:end]) - sum(newBitVecs[1][2:2:end])
                 newKey = (totOcc, totSz)
