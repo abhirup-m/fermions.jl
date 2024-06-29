@@ -129,12 +129,10 @@ end
 
 function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
-    for (key, bstates) in pairs(basisStates)
-        for (col, colState) in enumerate(bstates)
+    Threads.@threads for (key, bstates) in collect(basisStates)
+        Threads.@threads for (col, colState) in collect(enumerate(bstates))
             newStateDict = applyOperatorOnState(colState, operatorList)
-            println(length(bstates))
             for (row, rowState) in enumerate(bstates)
-                println(row)
                 if operatorFullMatrix[key][row, col] != 0
                     continue
                 end
@@ -184,47 +182,58 @@ end
 function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Int64; totOccReq::Vector{Int64}=[], totSzReq::Vector{Int64}=[])
     @assert numAdditionalSites > 0
     newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
-    Threads.@threads for (key, basisArr) in collect(basisStates)
-        for basisStateDict in basisArr
-            BitVecs = collect(keys(basisStateDict))
-            coeffs = collect(values(basisStateDict))
-            Threads.@threads for newBitCombination in collect(Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...))
-                newBitVecs = [vcat(state, collect(newBitCombination)) for state in BitVecs]
-                totOcc = sum(newBitVecs[1])
-                totSz = sum(newBitVecs[1][1:2:end]) - sum(newBitVecs[1][2:2:end])
-                newKey = (totOcc, totSz)
-                if (!isempty(totOccReq) && totOcc ∉ totOccReq) || (!isempty(totSzReq) && totSz ∉ totSzReq)
-                    continue
-                end
+    for newBitCombination in collect(Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...))
+        extraOcc = sum(newBitCombination)
+        extraSz = sum(newBitCombination[1:2:end]) - sum(newBitCombination[2:2:end])
+
+        Threads.@threads for ((totOcc, totSz), basisArr) in collect(basisStates)
+            if (!isempty(totOccReq) && (totOcc + extraOcc) ∉ totOccReq) || (!isempty(totSzReq) && (totSz + extraSz) ∉ totSzReq)
+                continue
+            end
+            newKey = (totOcc + extraOcc, totSz + extraSz)
+            for basisStateDict in basisArr
+                expandedKeys = [vcat(key, collect(newBitCombination)) for key in keys(basisStateDict)]
                 if newKey ∉ keys(newBasisStates)
                     newBasisStates[newKey] = []
                 end
-                push!(newBasisStates[newKey], Dict(zip(newBitVecs, coeffs)))
+                push!(newBasisStates[newKey], Dict(zip(expandedKeys, values(basisStateDict))))
+                end
             end
-        end
     end
     return newBasisStates
 end
 
 
+"""Performs a rotation of the given basis according to the given transformation. 
+Can be used to, for eg., transfer into an eigen basis."""
 function transformBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
         transformation::Dict{Tuple{Int64, Int64}, Vector{Vector{Float64}}})
-    newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
-    for k in keys(basisStates)
-        if k ∉ keys(transformation)
-            transformation[k] = vec([collect(M) for M in eachrow(Matrix(I, length(basisStates[k]), length(basisStates[k])))])
-        end
-        newBasisStates[k] = []
-        for (i, eigenvector) in enumerate(transformation[k])
-            push!(newBasisStates[k], Dict())
+
+    # check that the symmetry sectors of the transformation 
+    # are part of the old basis
+    @assert issubset(keys(transformation), keys(basisStates))
+
+    # stores the new rotated basis
+    newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}(k => [Dict() for vi in v] for (k, v) in transformation)
+
+    # loop over symmetry sectors of the transformation
+    Threads.@threads for (sector, vectors) in collect(transformation)
+
+        # loop over the eigen vectors of the transformation
+        # (for eg. eigenvector = [-0.5, 0.5, 0.5, 0.5])
+        for (i, eigenvector) in enumerate(vectors)
+
+            # loop over the v_i^j
             for (j, multiplier) in enumerate(eigenvector)
                 if multiplier == 0
                     continue
                 end
-                multipliedValues = multiplier .* collect(values(basisStates[k][j]))
-                multipliedState = Dict(zip(keys(basisStates[k][j]), multipliedValues))
-                mergewith!(+, newBasisStates[k][i], multipliedState)
+
+                # create the new basis states: {|1>: v_i^1 * b_{1, old}, |2>: v_i^2 * b_{2, old} ... }
+                multipliedState = Dict(q => multiplier * b for (q, b) in basisStates[sector][j])
+                mergewith!(+, newBasisStates[sector][i], multipliedState)
             end
+            @assert !isempty(newBasisStates[sector][i])
         end
     end
     return newBasisStates
