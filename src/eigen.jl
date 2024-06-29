@@ -6,7 +6,7 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
     if progressEnabled
         pbar = Progress(length(hamiltonian))
     end
-    @time spectra = Dict(zip(keys(hamiltonian), 
+    spectra = Dict(zip(keys(hamiltonian), 
                        fetch.([Threads.@spawn eigen(Hermitian(round.(matrix, digits=trunc(Int, -log10(tolerance)))))
                                for matrix in values(hamiltonian)])
                       )
@@ -15,7 +15,8 @@ function getSpectrum(hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; tole
         eigvalues = F.values
         maxNum = ifelse(maxNum == 0, length(eigvalues), minimum((length(eigvalues), maxNum)))
         @inbounds eigvals[index] = sort(eigvalues)[1:maxNum]
-        @inbounds eigvecs[index] = [F.vectors[:, i] for i in sortperm(eigvalues)[1:maxNum]]
+        @inbounds eigvecs[index] = [round.(F.vectors[:, i], digits=trunc(Int, -log10(tolerance))) 
+                                    for i in sortperm(eigvalues)[1:maxNum]]
         if !isnothing(pbar)
             next!(pbar)
         end

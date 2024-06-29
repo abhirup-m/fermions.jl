@@ -129,14 +129,16 @@ end
 
 function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
-    Threads.@threads for (key, bstates) in collect(basisStates)
-        Threads.@threads for (col, colState) in collect(enumerate(bstates))
+    for (key, bstates) in pairs(basisStates)
+        for (col, colState) in enumerate(bstates)
             newStateDict = applyOperatorOnState(colState, operatorList)
-            Threads.@threads for (row, rowState) in collect(enumerate(bstates))
+            println(length(bstates))
+            for (row, rowState) in enumerate(bstates)
+                println(row)
                 if operatorFullMatrix[key][row, col] != 0
                     continue
                 end
-                overlap = sum([coeff * rowState[bitVec] for (bitVec, coeff) in newStateDict if bitVec in keys(rowState)])
+                overlap = sum([newStateDict[key] * rowState[key] for key in intersect(keys(newStateDict), keys(rowState))])
                 operatorFullMatrix[key][row, col] = overlap
                 operatorFullMatrix[key][col, row] = overlap'
             end
@@ -182,11 +184,11 @@ end
 function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Int64; totOccReq::Vector{Int64}=[], totSzReq::Vector{Int64}=[])
     @assert numAdditionalSites > 0
     newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
-    for (key, basisArr) in basisStates
+    Threads.@threads for (key, basisArr) in collect(basisStates)
         for basisStateDict in basisArr
             BitVecs = collect(keys(basisStateDict))
             coeffs = collect(values(basisStateDict))
-            for newBitCombination in Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...)
+            Threads.@threads for newBitCombination in collect(Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...))
                 newBitVecs = [vcat(state, collect(newBitCombination)) for state in BitVecs]
                 totOcc = sum(newBitVecs[1])
                 totSz = sum(newBitVecs[1][1:2:end]) - sum(newBitVecs[1][2:2:end])
