@@ -129,11 +129,16 @@ end
 
 function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
-    for (key, bstates) in collect(basisStates)
-        for (index, state) in enumerate(bstates)
-            for (nState, coeff) in applyOperatorOnState(state, operatorList)
-                println(bstates, nState)
-                operatorFullMatrix[key][index, bstates.==[nState]] .= coeff
+    Threads.@threads for (key, bstates) in collect(basisStates)
+        Threads.@threads for (col, colState) in collect(enumerate(bstates))
+            newStateDict = applyOperatorOnState(colState, operatorList)
+            Threads.@threads for (row, rowState) in collect(enumerate(bstates))
+                if operatorFullMatrix[key][row, col] != 0
+                    continue
+                end
+                overlap = sum([coeff * rowState[bitVec] for (bitVec, coeff) in newStateDict if bitVec in keys(rowState)])
+                operatorFullMatrix[key][row, col] = overlap
+                operatorFullMatrix[key][col, row] = overlap'
             end
         end
     end
