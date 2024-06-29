@@ -84,19 +84,20 @@ function iterativeDiagonaliser(
         hamiltonianFamily::Vector{Dict{Tuple{String,Vector{Int64}},Float64}},
         initBasis::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
         numStatesFamily::Vector{Int64},
-        retainSize::Int64
+        retainSize::Int64;
+        tolerance::Float64
     )
     @assert length(hamiltonianFamily) == length(numStatesFamily)
     spectrumFamily = []
     basisStates = initBasis
-    @showprogress desc="iterative diag." for (i, hamiltonian) in enumerate(hamiltonianFamily)
-        @time hamiltonianMatrix = operatorMatrix(basisStates, hamiltonian)
-        @time spectrum = getSpectrum(hamiltonianMatrix; maxNum=retainSize)
+    @showprogress for (i, hamiltonian) in enumerate(hamiltonianFamily)
+        hamiltonianMatrix = operatorMatrix(basisStates, hamiltonian)
+        spectrum = getSpectrum(hamiltonianMatrix; maxNum=retainSize, tolerance=tolerance)
         push!(spectrumFamily, spectrum)
         @assert keys(basisStates) == keys(spectrum[1]) == keys(spectrum[2])
         basisStates = transformBasis(basisStates, spectrum[2])
         if i < length(numStatesFamily)
-            basisStates = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i])
+            basisStates = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], retainSize; totOccReq=[1+numStatesFamily[i+1]], totSzReq=[1, 0, -1])
         end
     end
     return spectrumFamily
