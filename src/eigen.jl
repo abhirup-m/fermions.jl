@@ -90,7 +90,7 @@ function iterativeDiagonaliser(
     spectrumFamily = []
     basisStates = initBasis
     @showprogress desc="iterative diag." for (i, hamiltonian) in enumerate(hamiltonianFamily)
-        @time hamiltonianMatrix = generalOperatorMatrix(basisStates, hamiltonian)
+        @time hamiltonianMatrix = operatorMatrix(basisStates, hamiltonian)
         @time spectrum = getSpectrum(hamiltonianMatrix; maxNum=retainSize)
         push!(spectrumFamily, spectrum)
         @assert keys(basisStates) == keys(spectrum[1]) == keys(spectrum[2])

@@ -127,7 +127,7 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
 end
 
 
-function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+function operatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
     Threads.@threads for (key, bstates) in collect(basisStates)
         Threads.@threads for (col, colState) in collect(enumerate(bstates))
@@ -143,21 +143,6 @@ function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict
         end
     end
     return operatorFullMatrix
-end
-
-
-function broadcastCouplingSet(matrixSet::Vector{Dict{Tuple{Int64,Int64}, Matrix{Float64}}}, couplingSet::Vector{Float64})
-    matrixSetCouplingMultiplied = [Dict(k => v .* coupling for (k, v) in matrix) for (matrix, coupling) in zip(matrixSet, couplingSet)]
-    return merge(+, matrixSetCouplingMultiplied...)
-end
-
-
-function generalOperatorMatrix(basisStates::Dict{Tuple{Int64,Int64},Vector{BitVector}}, operatorList::Vector{Tuple{String,Vector{Int64}}}, couplingMatrix::Vector{Vector{Float64}})
-
-    matrixSet = fetch.([Threads.@spawn generalOperatorMatrix(basisStates, Dict(operator => 1.0)) for operator in operatorList])
-    operatorMatrixSet = fetch.([Threads.@spawn broadcastCouplingSet(matrixSet, couplingSet) for couplingSet in couplingMatrix])
-    return operatorMatrixSet
-
 end
 
 
@@ -179,9 +164,16 @@ function prettyPrint(state::BitVector)
 end
 
 
-function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, numAdditionalSites::Int64; totOccReq::Vector{Int64}=[], totSzReq::Vector{Int64}=[])
+function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, 
+        numAdditionalSites::Int64,
+        energyVals::Dict{Tuple{Int64, Int64}, Vector{Float64}},
+        retainSize::Int64;
+        totOccReq::Vector{Int64}=[],
+        totSzReq::Vector{Int64}=[]
+    )
     @assert numAdditionalSites > 0
-    newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
+    newBasisStates = typeof(basisStates)()
+    energyTracker = Dict{Tuple{Int64, Int64}, Vector{Float64}}()
     for newBitCombination in collect(Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...))
         extraOcc = sum(newBitCombination)
         extraSz = sum(newBitCombination[1:2:end]) - sum(newBitCombination[2:2:end])
@@ -191,14 +183,19 @@ function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVecto
                 continue
             end
             newKey = (totOcc + extraOcc, totSz + extraSz)
-            for basisStateDict in basisArr
+            for (energy, basisStateDict) in zip(energyVals[(totOcc, totSz)], basisArr)
                 expandedKeys = [vcat(key, collect(newBitCombination)) for key in keys(basisStateDict)]
                 if newKey ∉ keys(newBasisStates)
                     newBasisStates[newKey] = []
+                    energyTracker[newKey] = []
                 end
                 push!(newBasisStates[newKey], Dict(zip(expandedKeys, values(basisStateDict))))
-                end
+                push!(energyTracker[newKey], energy)
             end
+        end
+    end
+    Threads.@threads for (k, statesArr) in collect(newBasisStates)
+        newBasisStates[k] = newBasisStates[k][sortperm(energyTracker[k])][1:minimum((length(newBasisStates[k]), retainSize))]
     end
     return newBasisStates
 end
@@ -221,7 +218,7 @@ function transformBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVe
 
         # loop over the eigen vectors of the transformation
         # (for eg. eigenvector = [-0.5, 0.5, 0.5, 0.5])
-        for (i, eigenvector) in enumerate(vectors)
+        Threads.@threads for (i, eigenvector) in collect(enumerate(vectors))
 
             # loop over the v_i^j
             for (j, multiplier) in enumerate(eigenvector)

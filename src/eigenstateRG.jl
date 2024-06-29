@@ -1,6 +1,6 @@
 function InitWavefunction(basisStates::Vector{BitVector}, initCouplings, hamiltonianFunction; tolerance=1e-10)
     operatorList = hamiltonianFunction(initCouplings...)
-    hamiltonianMatrix = generalOperatorMatrix(basisStates, operatorList)
+    hamiltonianMatrix = operatorMatrix(basisStates, operatorList)
     groundStates = getGstate(hamiltonianMatrix)
     @assert length(groundStates) == 1
     stateDict = Dict(bstate => coeff for (bstate,coeff) in zip(basisStates, groundStates[1]) if abs(coeff) > tolerance)
