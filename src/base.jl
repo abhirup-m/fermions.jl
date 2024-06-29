@@ -48,23 +48,25 @@ function BasisStates(numLevels::Int64; totSz::Union{Int64,Vector{Int64},Nothing}
     allConfigs = digits.(0:2^numLevels-1, base=2, pad=numLevels) |> reverse
 
     # loop over allowed occupancies, and store the configs in the dict
-    # classified by their total occupancies. We will also store the subdimensions
-    # while we are creating the dictionary.
-
+    # classified by their total occupancies.
     for (totSz, totOcc) in Iterators.product(allowedSz, allowedOccupancies)
+
+        # check which states have the correct occupancy and total Sz
         totOccArr = sum.(allConfigs)
         totSzArr = [sum(config[1:2:end]) - sum(config[2:2:end]) for config in allConfigs]
         allowedConfigs = allConfigs[(totOccArr .== totOcc) .& (totSzArr .== totSz)]
+
         for config in allowedConfigs
+            # for the ones that do, check if any local occupancy criteria is satisfied
             if localOccupancy[2] != -1 && sum(config[localOccupancy[1]]) ≠ localOccupancy[2]
                 continue
             end
-            sigmaz = sum(config[1:2:end]) - sum(config[2:2:end])
-            if !((totOcc, sigmaz) in keys(basisStates))
-                basisStates[(totOcc, sigmaz)] = []
+
+            if !((totOcc, totSz) in keys(basisStates))
+                basisStates[(totOcc, totSz)] = []
             end
             if length(config) > 0
-                push!(basisStates[(totOcc, sigmaz)], Dict(config => 1.0))
+                push!(basisStates[(totOcc, totSz)], Dict(config => 1.0))
             end
         end
     end
@@ -127,15 +129,30 @@ function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::
 end
 
 
+"""Creates matrix representation for the provided abstract operator definition.
+"""
 function operatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
+
+    # loop over symmetry sectors of the basis
     Threads.@threads for (key, bstates) in collect(basisStates)
+
+        # loop over basis states within the symmetry sector.
+        # These states will act as incoming states in terms
+        # of the operator (hence the column index 'col').
         Threads.@threads for (col, colState) in collect(enumerate(bstates))
+
+            # get action of operator on incoming basis state |ψ>
             newStateDict = applyOperatorOnState(colState, operatorList)
+
+            # again loop over the basis states, this term for the outgoing states <ϕ|
             for (row, rowState) in enumerate(bstates)
                 if operatorFullMatrix[key][row, col] != 0
                     continue
                 end
+
+                # calculate overlap between the outgoing state <ϕ| and the 
+                # modified incoming state O|ψ>.
                 overlap = sum([newStateDict[key] * rowState[key] for key in intersect(keys(newStateDict), keys(rowState))])
                 operatorFullMatrix[key][row, col] = overlap
                 operatorFullMatrix[key][col, row] = overlap'

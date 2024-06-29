@@ -1,15 +1,17 @@
-function gstateCorrelation(gstates::Vector{Dict{BitVector, Float64}}, correlationOperator::Dict{Tuple{String,Vector{Int64}},Float64})
-    correlationResult = 0
-    for state in gstates
-        @assert sum(collect(values(state)) .^ 2) ≈ 1
-        opOnState = applyOperatorOnState(state, correlationOperator)
-        stateCorr = 0
-        for (bstate, coeff) in opOnState
-            stateCorr += bstate ∈ keys(state) ? coeff * state[bstate] : 0
-        end
-        correlationResult += abs(stateCorr) / length(gstates)
-    end
-    return correlationResult
+"""Calculate static correlation function ⟨ψ|O|ψ⟩ of the provided operator."""
+function gstateCorrelation(gstates::Dict{BitVector, Float64}, correlationOperator::Dict{Tuple{String,Vector{Int64}},Float64})
+    # Gstate vector is of the form {|1>: c_1, |2>: c_2, ... |n>: c_n}.
+    # loop over the pairs (|m>, c_m)
+    
+    # check that state is normalised: ∑ c_m^2 = 1
+    @assert sum(values(state) .^ 2) ≈ 1
+
+    # check the action of the operator O on the ground state
+    opOnState = applyOperatorOnState(state, correlationOperator)
+
+    # calculate the overlap of the new state with the ground state
+    expecValue = sum([state[key] * opOnState[key] for key in intersect(keys(opOnState), keys(state))])
+    return expecValue
 end
 
 
@@ -19,11 +21,6 @@ function vnEntropy(groundState::Dict{BitVector, Float64}, reducingIndices::Vecto
     eigenvalues[eigenvalues .< 1e-16] .= 0
     @assert all(x -> x ≥ 0, eigenvalues)
     return -sum(eigenvalues .* log.(replace(eigenvalues, 0 => 1e-10)))
-end
-
-
-function vnEntropy(gstates::Vector{Dict{BitVector, Float64}}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
-    return sum(abs.([vnEntropy(gstate, reducingIndices) for gstate in gstates])) / length(gstates)
 end
 
 
@@ -38,14 +35,3 @@ function mutInfo(
     SEE_AB = vnEntropy(groundState, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
     return SEE_A + SEE_B - SEE_AB
 end
-
-
-function mutInfo(
-        gstates::Vector{Dict{BitVector, Float64}}, 
-        reducingIndices::Tuple{Vector{Int64}, Vector{Int64}};
-        reducingConfigs::Tuple{Vector{BitVector}, Vector{BitVector}}=(BitVector[], BitVector[])
-    )
-    return sum(abs.([mutInfo(gstate, reducingIndices) for gstate in gstates])) / length(gstates)
-end
-
-
