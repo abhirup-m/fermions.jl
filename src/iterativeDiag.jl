@@ -127,7 +127,7 @@ function iterativeDiagonaliser(
         retainSize::Int64;
         occSubspace::Vector{Int64}=[1],
         SzSubspace::Vector{Int64}=[1, 0, -1],
-        tolerance::Float64
+        tolerance::Float64=1e-16
     )
     @assert length(hamiltonianFamily) == length(numStatesFamily) == length(insertPosition) - 1
 
