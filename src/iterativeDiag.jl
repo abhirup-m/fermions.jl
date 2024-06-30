@@ -60,7 +60,7 @@ function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVecto
                     diagElements[newKey] = []
                 end
 
-                push!(newBasisStates[newKey], Dict(zip(expandedKeys, values(basisStateDict))))
+                push!(newBasisStates[newKey], Dict(zip(expandedBasisStates, values(basisStateDict))))
                 push!(diagElements[newKey], energy)
             end
         end
