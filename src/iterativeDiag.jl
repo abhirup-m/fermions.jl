@@ -129,7 +129,7 @@ function iterativeDiagonaliser(
         SzSubspace::Vector{Int64}=[1, 0, -1],
         tolerance::Float64=1e-16
     )
-    @assert length(hamiltonianFamily) == length(numStatesFamily) == length(insertPosition) - 1
+    @assert length(hamiltonianFamily) == length(numStatesFamily) == length(insertPosition) + 1
 
     # stores flow of the spectrum
     spectrumFamily = []
