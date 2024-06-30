@@ -4,6 +4,7 @@ product states on to existing states. For eg. |10> + |01> -> (|10> + |01>)⊗|1>
 function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, 
         numAdditionalSites::Int64,
         energyVals::Dict{Tuple{Int64, Int64}, Vector{Float64}},
+        insertPosition::Int64,
         retainSize::Int64;
         totOccReq::Vector{Int64}=[],
         totSzReq::Vector{Int64}=[]
@@ -50,7 +51,9 @@ function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVecto
 
                 # form new basis states by joining the new and the old 
                 # computational states: |10> -><- |0> = |100>
-                expandedBasisStates = [vcat(key, collect(newBitCombination)) for key in keys(basisStateDict)]
+                expandedBasisStates = [vcat(key[1:insertPosition-1], collect(newBitCombination), 
+                                            key[insertPosition:end])
+                                       for key in keys(basisStateDict)]
 
                 if newKey ∉ keys(newBasisStates)
                     newBasisStates[newKey] = []
@@ -120,10 +123,13 @@ function iterativeDiagonaliser(
         hamiltonianFamily::Vector{Dict{Tuple{String,Vector{Int64}},Float64}},
         initBasis::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
         numStatesFamily::Vector{Int64},
+        insertPosition::Vector{Int64},
         retainSize::Int64;
+        occSubspace::Vector{Int64}=[1],
+        SzSubspace::Vector{Int64}=[1, 0, -1],
         tolerance::Float64
     )
-    @assert length(hamiltonianFamily) == length(numStatesFamily)
+    @assert length(hamiltonianFamily) == length(numStatesFamily) == length(insertPosition) - 1
 
     # stores flow of the spectrum
     spectrumFamily = []
@@ -161,7 +167,7 @@ function iterativeDiagonaliser(
         basisStates = transformBasis(basisStates, spectrum[2])
         if i < length(numStatesFamily)
             # expand the new basis to accomodate the new sites for the next step.
-            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], retainSize; totOccReq=[1+numStatesFamily[i+1]], totSzReq=[1, 0, -1])
+            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], insertPosition[i], retainSize; totOccReq=occSubspace .* (1 + numStatesFamily[i+1]), totSzReq=SzSubspace)
         end
     end
     return spectrumFamily
