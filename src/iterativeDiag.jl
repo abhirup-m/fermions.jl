@@ -40,7 +40,8 @@ function expandBasis(basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVecto
             # only consider further if the total new occupancy and total new Sz
             # (after attaching the extra states with the old state) fall in the 
             # range that are required (the required range is passed as function arg.)
-            if (!isempty(totOccReq) && (totOcc + extraOcc) ∉ totOccReq) || (!isempty(totSzReq) && (totSz + extraSz) ∉ totSzReq)
+            avgOcc = 2 * totOcc / length.(keys(basisArr[1]))[1] + 2 * extraOcc / length(newBitCombination)
+            if (!isempty(totOccReq) && avgOcc ∉ totOccReq) || (!isempty(totSzReq) && (totSz + extraSz) ∉ totSzReq)
                 continue
             end
 
@@ -125,7 +126,7 @@ function iterativeDiagonaliser(
         numStatesFamily::Vector{Int64},
         insertPosition::Vector{Int64},
         retainSize::Int64;
-        occSubspace::Vector{Int64}=[0.5],
+        occSubspace::Vector{Int64}=[1],
         SzSubspace::Vector{Int64}=[1, 0, -1],
         tolerance::Float64=1e-16
     )
@@ -167,7 +168,7 @@ function iterativeDiagonaliser(
         basisStates = transformBasis(basisStates, spectrum[2])
         if i < length(numStatesFamily)
             # expand the new basis to accomodate the new sites for the next step.
-            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], insertPosition[i], retainSize; totOccReq=occSubspace .* 2 * (1 + numStatesFamily[i+1]), totSzReq=SzSubspace)
+            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], insertPosition[i], retainSize; totOccReq=occSubspace, totSzReq=SzSubspace)
         end
     end
     return spectrumFamily
