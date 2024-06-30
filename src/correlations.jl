@@ -35,3 +35,48 @@ function mutInfo(
     SEE_AB = vnEntropy(groundState, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
     return SEE_A + SEE_B - SEE_AB
 end
+
+
+function specFunc(
+        groundState::Dict{BitVector,Float64},
+        energyGs::Float64,
+        eigVals::Dict{Tuple{Int64, Int64}, Vector{Float64}}, 
+        eigVecs::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
+        probe::Dict{Tuple{String,Vector{Int64}},Float64},
+        probeDag::Dict{Tuple{String,Vector{Int64}},Float64},
+        freqPoints::Tuple{Float64, Int64},
+        broadening::Float64
+    )
+
+    # calculate c_ν |GS>
+    excitedState = applyOperatorOnState(groundState, probe)
+
+    # calculate c^†_ν |GS>
+    excitedStateDag = applyOperatorOnState(groundState, probeDag)
+
+    # calculate the quantum numbers of the symmetry sector in which
+    # the above excited states reside. We only need to the check the
+    # eigenstates in these symmetry sectors to calculate the overlaps.
+    excitedSector = (sum(collect(keys(excitedState))[1]), 
+                     sum(collect(keys(excitedState))[1:2:end]) - sum(collect(keys(excitedState))[2:2:end])
+                    )
+    excitedSectorDag = (sum(collect(keys(excitedStateDag))[1]), 
+                     sum(collect(keys(excitedStateDag))[1:2:end]) - sum(collect(keys(excitedStateDag))[2:2:end])
+                    )
+
+    # create array of frequency points and spectral function
+    freqArray = range(-abs(freqPoints[1]), stop=abs(freqPoints[1]), length=freqPoints[2])
+    specFuncArray = 0 .* freqArray
+
+    # loop over eigenstates of the excited symmetry sectors,
+    # calculated overlaps and multiply the appropriate denominators.
+    for (i, stateDict) in collect(enumerate(eigVecs[excitedSector]))
+        overlap = sum([stateDict[key] * excitedState[key] for key in intersect(keys(excitedState), keys(stateDict))])
+        specFuncArray .+= abs(overlap)^2 * broadening ./ ((freqArray + energyGs .- eigVals[key][i]) .^ 2 .+ broadening ^ 2)
+    end
+    for (i, stateDict) in collect(enumerate(eigVecs[excitedSectorDag]))
+        overlapDag = sum([stateDict[key] * excitedStateDag[key] for key in intersect(keys(excitedStateDag), keys(stateDict))])
+        specFuncArray .+= abs(overlapDag)^2 * broadening ./ ((freqArray - energyGs .+ eigVals[excitedSectorDag][i]) .^ 2 .+ broadening ^ 2)
+    end
+    return specFuncArray
+end
