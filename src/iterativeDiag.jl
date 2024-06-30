@@ -125,7 +125,7 @@ function iterativeDiagonaliser(
         numStatesFamily::Vector{Int64},
         insertPosition::Vector{Int64},
         retainSize::Int64;
-        occSubspace::Vector{Int64}=[1],
+        occSubspace::Vector{Int64}=[0.5],
         SzSubspace::Vector{Int64}=[1, 0, -1],
         tolerance::Float64=1e-16
     )
@@ -167,7 +167,7 @@ function iterativeDiagonaliser(
         basisStates = transformBasis(basisStates, spectrum[2])
         if i < length(numStatesFamily)
             # expand the new basis to accomodate the new sites for the next step.
-            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], insertPosition[i], retainSize; totOccReq=occSubspace .* (1 + numStatesFamily[i+1]), totSzReq=SzSubspace)
+            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], insertPosition[i], retainSize; totOccReq=occSubspace .* 2 * (1 + numStatesFamily[i+1]), totSzReq=SzSubspace)
         end
     end
     return spectrumFamily
