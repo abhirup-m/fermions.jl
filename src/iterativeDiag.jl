@@ -2,66 +2,66 @@
 product states on to existing states. For eg. |10> + |01> -> (|10> + |01>)⊗|1>.
 """
 function expandBasis(
-        basisStates::Dict{Tuple{Float64, Int64}, Vector{Dict{BitVector, Float64}}}, 
+        basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, 
         numAdditionalSites::Int64,
-        energyVals::Dict{Tuple{Float64, Int64}, Vector{Float64}},
-        insertPosition::Int64,
+        energyVals::Dict{Tuple{Int64, Int64}, Vector{Float64}},
         retainSize::Int64;
-        totOccReq::Vector{Float64}=Float64[],
-        totSzReq::Vector{Int64}=[1, 0, -1]
+        occCriteria::Function = (x,y) -> true,
+        magzCriteria::Function = x -> true
     )
     @assert numAdditionalSites > 0
 
-    # stores the new expanded basis
-    newBasisStates = typeof(basisStates)()
+    numLevelsOld = length.(keys(collect(values(basisStates))[1][1]))[1]
 
     # each new basis states is associated with an old basis state from which 
     # it was derived. These old basis states are actually eigenstates of the
     # N-1-th hamiltonian in an iterative diagonalisation scheme, and are
     # themselves associated with energy eigenvalues.
 
+    allowedSectors = Dict{Tuple{Int64, Int64}, Vector{Tuple{Tuple{Int64, Int64}, Vector{Int64}}}}()
+    for (occ, magz) in keys(basisStates) 
+        for newBitCombination in Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...)
+            totalOcc = occ + sum(newBitCombination)
+            totalMagz = magz + sum(newBitCombination[1:2:end]) - sum(newBitCombination[2:2:end])
+            numLevelsNew = numLevelsOld + length(newBitCombination)
+            @assert numLevelsNew % 2 == 0
+            if !occCriteria(totalOcc, trunc(Int, numLevelsNew / 2)) || !magzCriteria(totalMagz)
+                continue
+            end
+            if (totalOcc, totalMagz) ∉ keys(allowedSectors)
+                allowedSectors[(totalOcc, totalMagz)] = []
+            end
+            push!(allowedSectors[(totalOcc, totalMagz)], ((occ, magz), collect(newBitCombination)))
+        end
+    end
+
+    # stores the new expanded basis
+    newBasisStates = Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}(k => [] for k in keys(allowedSectors))
+
     # for each new basis state, the variable 'diagElements' stores the energy 
     # of the old eigenstate from which the new basis state was derived. Serves
     # two purposes:(i) sorts the full set of new basis states so that we can 
     # take the M least energetic states (truncation), and (ii) these energy
     # values form the diagonal elements of the new Nth Hamiltonian.
-    diagElements = Dict{Tuple{Float64, Int64}, Vector{Float64}}()
+    diagElements = Dict{Tuple{Int64, Int64}, Vector{Float64}}(k => [] for k in keys(allowedSectors))
 
-    # loop over all combinations of the new states that are being added. if only
-    # one states is being added, then 0 and 1. if two, then 00, 01, 10 and 11.
-    for newBitCombination in collect(Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...))
+    Threads.@threads for (newSector, possibilities) in collect(allowedSectors)
 
-        # check the occupancy and Sz associated with these combinations
-        extraOcc = sum(newBitCombination)
-        extraSz = sum(newBitCombination[1:2:end]) - sum(newBitCombination[2:2:end])
-        # loop over the existing old basis states
-        Threads.@threads for ((totOcc, totSz), basisArr) in collect(basisStates)
-
-            # only consider further if the total new occupancy and total new Sz
-            # (after attaching the extra states with the old state) fall in the 
-            # range that are required (the required range is passed as function arg.)
-            avgOcc = (totOcc * length.(keys(basisArr[1]))[1] + extraOcc) / (length.(keys(basisArr[1]))[1] + length(newBitCombination))
-            if (!isempty(totOccReq) && avgOcc ∉ totOccReq) || (!isempty(totSzReq) && (totSz + extraSz) ∉ totSzReq)
-                continue
-            end
-
-            newKey = (avgOcc, totSz + extraSz)
-
+        for (oldSector, newBitCombination) in possibilities
             # loop over the computational basis components of the old state
-            for (energy, basisStateDict) in zip(energyVals[(totOcc, totSz)], basisArr)
+            for (energy, basisStateDict) in zip(energyVals[oldSector], basisStates[oldSector])
                 # form new basis states by joining the new and the old 
                 # computational states: |10> -><- |0> = |100>
-                expandedBasisStates = [vcat(key, collect(newBitCombination))
+                expandedBasisStates = [vcat(key, newBitCombination)
                                        for key in keys(basisStateDict)]
 
-                if newKey ∉ keys(newBasisStates)
-                    newBasisStates[newKey] = []
-                    diagElements[newKey] = []
-                end
-
-                push!(newBasisStates[newKey], Dict(zip(expandedBasisStates, values(basisStateDict))))
-                push!(diagElements[newKey], energy)
+                push!(newBasisStates[newSector], Dict(zip(expandedBasisStates, values(basisStateDict))))
+                push!(diagElements[newSector], energy)
             end
+        end
+        if isempty(newBasisStates[newSector])
+            delete!(newBasisStates, newSector)
+            delete!(diagElements, newSector)
         end
     end
 
@@ -76,44 +76,6 @@ function expandBasis(
 end
 
 
-"""Performs a rotation of the given basis according to the given transformation. 
-Can be used to, for eg., transfer into an eigen basis."""
-function transformBasis(
-        basisStates::Dict{Tuple{Float64, Int64}, Vector{Dict{BitVector, Float64}}},
-        transformation::Dict{Tuple{Float64, Int64}, Vector{Vector{Float64}}})
-
-    # check that the symmetry sectors of the transformation 
-    # are part of the old basis
-    @assert issubset(keys(transformation), keys(basisStates))
-
-    # stores the new rotated basis
-    newBasisStates = Dict{keytype(basisStates), valtype(basisStates)}()
-
-    # loop over symmetry sectors of the transformation
-    Threads.@threads for (sector, vectors) in collect(transformation)
-
-        newBasisStates[sector] = rotateStates(basisStates[sector], vectors)
-        # # loop over the eigenvectors of the transformation
-        # # (for eg. eigenvector = [-0.5, 0.5, 0.5, 0.5])
-        # Threads.@threads for (i, eigenvector) in collect(enumerate(vectors))
-
-        #     # loop over the v_i^j
-        #     for (j, multiplier) in enumerate(eigenvector)
-        #         if multiplier == 0
-        #             continue
-        #         end
-
-        #         # create the new basis states: {|1>: v_i^1 * b_{1, old}, |2>: v_i^2 * b_{2, old} ... }
-        #         multipliedState = Dict(q => multiplier * b for (q, b) in basisStates[sector][j])
-        #         mergewith!(+, newBasisStates[sector][i], multipliedState)
-        #     end
-        #     @assert !isempty(newBasisStates[sector][i])
-        # end
-    end
-    return newBasisStates
-end
-
-
 """Main function for iterative diagonalisation. Gives the approximate low-energy
 spectrum of a hamiltonian through the following algorithm: first diagonalises a
 Hamiltonian with few degrees of freedom, retains a fixed Ns number of low-energy
@@ -122,15 +84,14 @@ the basis of these Ns states, then diagonalises it, etc.
 """
 function iterativeDiagonaliser(
         hamiltonianFamily::Vector{Dict{Tuple{String,Vector{Int64}},Float64}},
-        initBasis::Dict{Tuple{Float64, Int64}, Vector{Dict{BitVector, Float64}}},
+        initBasis::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
         numStatesFamily::Vector{Int64},
-        insertPosition::Vector{Int64},
         retainSize::Int64;
-        occSubspace::Vector{Float64}=Float64[],
-        SzSubspace::Vector{Int64}=[1, 0, -1],
-        tolerance::Float64=1e-16
+        occCriteria::Function = (x,y) -> true,
+        magzCriteria::Function = x -> true,
+        tolerance::Float64=1e-12
     )
-    @assert length(hamiltonianFamily) == length(numStatesFamily) == length(insertPosition) + 1
+    @assert length(hamiltonianFamily) == length(numStatesFamily)
 
     # stores flow of the spectrum
     spectrumFamily = []
@@ -139,7 +100,7 @@ function iterativeDiagonaliser(
     basisStates = initBasis
 
     # stores the current eigenvalues
-    diagElements = Dict{Tuple{Float64, Int64}, Vector{Float64}}(k => zeros(length(v)) for (k, v) in basisStates)
+    diagElements = Dict{Tuple{Int64, Int64}, Vector{Float64}}(k => zeros(length(v)) for (k, v) in basisStates)
 
     # loop over the Hamiltonians H_N.
     @showprogress for (i, hamiltonian) in enumerate(hamiltonianFamily)
@@ -166,10 +127,11 @@ function iterativeDiagonaliser(
         @assert keys(basisStates) == keys(spectrum[1]) == keys(spectrum[2])
 
         # create basis out of the eigenstates
-        basisStates = spectrum[2]#transformBasis(basisStates, spectrum[2])
+        basisStates = spectrum[2]
         if i < length(numStatesFamily)
             # expand the new basis to accomodate the new sites for the next step.
-            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], insertPosition[i], retainSize; totOccReq=occSubspace, totSzReq=SzSubspace)
+            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], retainSize; 
+                                                          occCriteria=occCriteria, magzCriteria=magzCriteria)
         end
     end
     return spectrumFamily

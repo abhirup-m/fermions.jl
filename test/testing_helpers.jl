@@ -32,3 +32,40 @@ function HubbardDimerOplist(eps, U, hop_t)
     operatorList[("+-", [4, 2])] = hop_t[2]
     return operatorList
 end
+
+
+function dimerHamiltonian(U, t)
+    hopping = Dict(
+                   ("+-", [1, 3]) => -t,
+                   ("+-", [2, 4]) => -t,
+                   ("+-", [3, 1]) => -t,
+                   ("+-", [4, 2]) => -t,
+                  )
+    correlation = Dict(
+                       ("n", [1]) => -U/2,
+                       ("n", [2]) => -U/2,
+                       ("nn", [1, 2]) => U,
+                       ("n", [3]) => -U/2,
+                       ("n", [4]) => -U/2,
+                       ("nn", [3, 4]) => U,
+                  )
+    return mergewith(+, hopping, correlation)
+end
+
+
+function dimerAdditionalHamiltonian(U, t, index)
+    upPosition = 2 * index - 1
+    hopping = Dict(
+                   ("+-", [upPosition, upPosition - 2]) => -t,
+                   ("+-", [upPosition + 1, upPosition - 1]) => -t,
+                   ("+-", [upPosition - 2, upPosition]) => -t,
+                   ("+-", [upPosition - 1, upPosition + 1]) => -t,
+                  )
+    
+    correlation = Dict(
+                       ("n", [upPosition]) => -U/2,
+                       ("n", [upPosition + 1]) => -U/2,
+                       ("nn", [upPosition, upPosition + 1]) => U
+                      )
+    return mergewith(+, hopping, correlation)
+end

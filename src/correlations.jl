@@ -61,11 +61,11 @@ end
 function specFunc(
         groundState::Dict{BitVector,Float64},
         energyGs::Float64,
-        eigVals::Dict{Tuple{Float64, Int64}, Vector{Float64}}, 
-        eigVecs::Dict{Tuple{Float64, Int64}, Vector{Dict{BitVector, Float64}}},
+        eigVals::Dict{Tuple{Int64, Int64}, Vector{Float64}}, 
+        eigVecs::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
         probe::Dict{Tuple{String,Vector{Int64}},Float64},
         probeDag::Dict{Tuple{String,Vector{Int64}},Float64},
-        freqPoints::Tuple{Float64, Int64},
+        freqArray::Vector{Float64},
         broadening::Float64
     )
 
@@ -78,14 +78,12 @@ function specFunc(
     # calculate the quantum numbers of the symmetry sector in which
     # the above excited states reside. We only need to the check the
     # eigenstates in these symmetry sectors to calculate the overlaps.
-    excitedSector = (sum.(keys(excitedState))[1] / length.(keys(excitedState))[1], 
-                     sum(collect(keys(excitedState))[1][1:2:end]) - sum(collect(keys(excitedState))[1][2:2:end])
-                    )
-    excitedSectorDag = (sum.(keys(excitedStateDag))[1] / length.(keys(excitedStateDag))[1], 
-                        sum(collect(keys(excitedStateDag))[1][1:2:end]) - sum(collect(keys(excitedStateDag))[1][2:2:end])
-                    )
+    excCompState = collect(keys(excitedState))[1]
+    excitedSector = (sum(excCompState), sum(excCompState[1:2:end]) - sum(excCompState[2:2:end]))
+    excCompStateDag = collect(keys(excitedStateDag))[1]
+    excitedSectorDag = (sum(excCompStateDag), sum(excCompStateDag[1:2:end]) - sum(excCompStateDag[2:2:end]))
+
     # create array of frequency points and spectral function
-    freqArray = range(-abs(freqPoints[1]), stop=abs(freqPoints[1]), length=freqPoints[2])
     specFuncArray = 0 .* freqArray
 
     # loop over eigenstates of the excited symmetry sectors,

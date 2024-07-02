@@ -1,5 +1,5 @@
 #### Iterative diagonalisation solution of the 1D Hubbard model ####
-using ProgressMeter, LinearAlgebra
+using ProgressMeter, LinearAlgebra, Plots
 include("../src/base.jl")
 include("../src/correlations.jl")
 include("../src/iterativeDiag.jl")
@@ -26,10 +26,6 @@ end
 function dimerAdditionalHamiltonian(U, t, index)
     upPosition = 2 * index - 1
     hopping = Dict(
-                   ("+-", [upPosition, upPosition + 2]) => -t,
-                   ("+-", [upPosition + 1, upPosition + 3]) => -t,
-                   ("+-", [upPosition + 2, upPosition]) => -t,
-                   ("+-", [upPosition + 3, upPosition + 1]) => -t,
                    ("+-", [upPosition, upPosition - 2]) => -t,
                    ("+-", [upPosition + 1, upPosition - 1]) => -t,
                    ("+-", [upPosition - 2, upPosition]) => -t,
@@ -46,42 +42,35 @@ end
 
 function main(numSteps, U)
     t = 1.0
+    initBasis = BasisStates(4; occCriteria=x -> x ∈ [1, 2, 3], magzCriteria = x -> x ∈ [-1, 0, 1])#; magzCriteria=magzCriteria, occCriteria=occCriteria)
+    retainSize = 50
     hamiltonianFamily = [dimerHamiltonian(U, t)]
     numStatesFamily = Int64[2]
-    insertPosFamily = Int64[]
-    insertPos = 2
     for i in 1:numSteps
-        push!(hamiltonianFamily, dimerAdditionalHamiltonian(U, t, insertPos))
+        push!(hamiltonianFamily, dimerAdditionalHamiltonian(U, t, 2 + i)
+             )
         push!(numStatesFamily, 2 + i)
-        push!(insertPosFamily, insertPos)
-        insertPos = ifelse(i % 2 ≠ 0, insertPos, insertPos + 1)
     end
-    return hamiltonianFamily, numStatesFamily, insertPosFamily
+    spectrumFamily = iterativeDiagonaliser(hamiltonianFamily, initBasis, numStatesFamily, retainSize;
+                                           occCriteria= (x,y) -> x ∈ [y-1, y, y+1], magzCriteria = x -> x ∈ [-1, 0, 1]
+                                          )#; occCriteria=occCriteria, magzCriteria = magzCriteria)
+    plots = []
+    for (numStates, (E, X)) in zip(numStatesFamily, spectrumFamily)
+        if numStates % 2 == 1
+            continue
+        end
+        sector = (numStates, 0)
+        groundState = X[sector][1]
+        energyGs = E[sector][1]
+        probe = Dict(("-", [2 * numStates - 1]) => 1.0)
+        probeDag = Dict(("+", [2 * numStates - 1]) => 1.0)
+        freqArray = collect(range(-10, stop=10, length=500))
+        specfunc = specFunc(groundState, energyGs, E, X, probe, probeDag, freqArray, 0.0001)
+
+        push!(plots, plot(freqArray, specfunc, linewidth=2, xlabel="\$\\omega\$", ylabel="\$A(\\omega)\$", size=(300, 200 * length(plots))))
+    end
+    p = plot(plots..., layout=(length(plots), 1))
+    savefig(p, "specfunc.pdf")
 end
 
-hamiltonianFamily, numStatesFamily, insertPosFamily = main(2, 0.0)
-initBasis = BasisStates(4; allowedOccupancies=0.5)
-retainSize = 100
-spectrumFamily = iterativeDiagonaliser(hamiltonianFamily, initBasis, numStatesFamily, insertPosFamily, retainSize)
-
-for (numStates, pos, (E, X)) in zip(numStatesFamily, insertPosFamily, spectrumFamily[2:end])
-    if numStates % 2 == 0
-        continue
-    end
-    sector = (0.5, 0)
-    groundState = X[sector][1]
-    energyGs = E[sector][1]
-    probe = Dict(("-", [numStates]) => 1.0)
-    probeDag = Dict(("+", [numStates]) => 1.0)
-    specfunc = specFunc(groundState, energyGs, E, X, probe, probeDag, (1.0, 100), 0.01)
-    # function specFunc(
-    #         groundState::Dict{BitVector,Float64},
-    #         energyGs::Float64,
-    #         eigVals::Dict{Tuple{Float64, Int64}, Vector{Float64}}, 
-    #         eigVecs::Dict{Tuple{Float64, Int64}, Vector{Dict{BitVector, Float64}}},
-    #         probe::Dict{Tuple{String,Vector{Int64}},Float64},
-    #         probeDag::Dict{Tuple{String,Vector{Int64}},Float64},
-    #         freqPoints::Tuple{Float64, Int64},
-    #         broadening::Float64
-    #     )
-end
+main(10, 1.0)

@@ -12,30 +12,25 @@ Optionally accepts a parameter totOccupancy that restricts the basis states to o
 those with the specified total occupancy, and a parameter totSpin that does the same
 but for a specified total magnetisation.
 """
-function BasisStates(numLevels::Int64; allowedSz::Union{Int64,Vector{Int64},Nothing}=nothing, allowedOccupancies::Union{Float64,Vector{Float64},Nothing}=nothing, localOccupancy::Tuple{Vector{Int64}, Int64}=([1,2], -1))
+
+
+function roundTo(val, tolerance)
+    return round(val, digits=trunc(Int, -log10(tolerance)))
+end
+
+
+function multiplyDict(dicts, multipliers)
+    @assert length(dicts) == length(multipliers)
+    return mergewith(+, fetch.([Threads.@spawn ((dict, m) -> Dict(k => v * m for (k, v) in dict))(dict, m) for (dict, m) in zip(dicts, multipliers)])...)
+end
+
+
+function BasisStates(numLevels::Int64; magzCriteria::Function=x -> true, occCriteria::Function=x -> true, localConstraint::Function=x -> true)
     @assert numLevels > 0 && numLevels % 2 == 0
-
-    # if totOccupancy is not set, all occupancies from 0 to N are allowed,
-    # otherwise use only the provided totOccupancy
-    if !isnothing(allowedOccupancies)
-        if typeof(allowedOccupancies) == Float64
-            allowedOccupancies = [allowedOccupancies]
-        end
-        @assert all(0 .<= allowedOccupancies .<= numLevels)
-    end
-
-    # same for total Sz
-    numSites = trunc(Int, numLevels / 2)
-    if !isnothing(allowedSz)
-        if typeof(allowedSz) == Int64
-            allowedSz = [allowedSz]
-        end
-        @assert all(-numSites .<= allowedSz .<= numSites)
-    end
 
     # create dictionary to store configurations classified by their total occupancies.
     # For eg, basisStates = {0: [[0, 0]], 1: [[1, 0], [0, 1]], 2: [[1, 1]]}}
-    basisStates = Dict{Tuple{Float64,Int64},Vector{Dict{BitVector, Float64}}}()
+    basisStates = Dict{Tuple{Int64,Int64},Vector{Dict{BitVector, Float64}}}()
 
     # generate all possible configs, by running integers from 0 to 2^N-1, and converting
     # them to binary forms
@@ -44,25 +39,17 @@ function BasisStates(numLevels::Int64; allowedSz::Union{Int64,Vector{Int64},Noth
     for config in allConfigs
 
         # check which states have the correct occupancy and total Sz
-        totOcc = sum(config) / numLevels
-        totSz = sum(config[1:2:end]) - sum(config[2:2:end])
-        if !isnothing(allowedOccupancies) && totOcc ∉ allowedOccupancies
-            continue
-        end
-        if !isnothing(allowedSz) && totSz ∉ allowedSz
+        occupancy = sum(config)
+        magz = sum(config[1:2:end]) - sum(config[2:2:end])
+        if !occCriteria(occupancy) || !magzCriteria(magz) || !localConstraint(config)
             continue
         end
 
-        # for the ones that do, check if any local occupancy criteria is satisfied
-        if localOccupancy[2] != -1 && sum(config[localOccupancy[1]]) ≠ localOccupancy[2]
-            continue
-        end
-
-        if !((totOcc, totSz) in keys(basisStates))
-            basisStates[(totOcc, totSz)] = []
+        if !((occupancy, magz) in keys(basisStates))
+            basisStates[(occupancy, magz)] = []
         end
         if length(config) > 0
-            push!(basisStates[(totOcc, totSz)], Dict(config => 1.0))
+            push!(basisStates[(occupancy, magz)], Dict(config => 1.0))
         end
     end
 
@@ -126,7 +113,7 @@ end
 
 """Creates matrix representation for the provided abstract operator definition.
 """
-function operatorMatrix(basisStates::Dict{Tuple{Float64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+function operatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVector, Float64}}}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64}; tolerance=1e-14)
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
 
     # loop over symmetry sectors of the basis
@@ -149,8 +136,8 @@ function operatorMatrix(basisStates::Dict{Tuple{Float64,Int64}, Vector{Dict{BitV
                 # calculate overlap between the outgoing state <ϕ| and the 
                 # modified incoming state O|ψ>.
                 overlap = sum([newStateDict[key] * rowState[key] for key in intersect(keys(newStateDict), keys(rowState))])
-                operatorFullMatrix[key][row, col] = overlap
-                operatorFullMatrix[key][col, row] = overlap'
+                operatorFullMatrix[key][row, col] = abs(overlap) > tolerance ? overlap : 0
+                operatorFullMatrix[key][col, row] = operatorFullMatrix[key][row, col]'
             end
         end
     end
@@ -177,59 +164,37 @@ end
 
 
 function getSpectrum(
-        basisStates::Dict{Tuple{Float64,Int64},Vector{Dict{BitVector, Float64}}},
-        hamiltonian::Dict{Tuple{Float64,Int64},Matrix{Float64}}; 
-        tolerance::Float64=1e-16, maxNum::Int64=0, progressEnabled::Bool=false
+        basisStates::Dict{Tuple{Int64,Int64},Vector{Dict{BitVector, Float64}}},
+        hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; 
+        tolerance::Float64=1e-14, maxNum::Int64=0, progressEnabled::Bool=false
     )
-    @assert all(x -> ishermitian(x), values(hamiltonian))
-    eigvals = Dict{Tuple{Float64,Int64},Vector{Float64}}(index => [] for index in keys(hamiltonian))
-    eigvecs = Dict{Tuple{Float64,Int64},Vector{Dict{BitVector, Float64}}}(index => [] for index in keys(hamiltonian))
+    for (k, v) in hamiltonian
+        if !ishermitian(v) 
+            if abs(maximum(v .- v')) < tolerance
+                hamiltonian[k] = 0.5 .* (v .+ v')
+            else
+                @assert false "Not hermitian."
+            end
+        end
+    end
+
+    eigvals = Dict{Tuple{Int64,Int64},Vector{Float64}}(index => [] for index in keys(hamiltonian))
+    eigvecs = Dict{Tuple{Int64,Int64},Vector{Dict{BitVector, Float64}}}(index => [] for index in keys(hamiltonian))
     pbar = nothing
     if progressEnabled
         pbar = Progress(length(hamiltonian))
     end
-    spectra = Dict(zip(keys(hamiltonian), 
-                       fetch.([Threads.@spawn eigen(Hermitian(round.(matrix, digits=trunc(Int, -log10(tolerance)))))
-                               for matrix in values(hamiltonian)])
-                      )
-                  )
-    for (index, F) in spectra
-        eigvalues = F.values
-        maxNum = ifelse(maxNum == 0, length(eigvalues), minimum((length(eigvalues), maxNum)))
-        @inbounds eigvals[index] = sort(eigvalues)[1:maxNum]
-        @inbounds eigvecs[index] = rotateStates(basisStates[index], 
-                                                [round.(F.vectors[:, i], digits=trunc(Int, -log10(tolerance))) 
-                                                 for i in sortperm(eigvalues)[1:maxNum]])
-        
-        if !isnothing(pbar)
-            next!(pbar)
-        end
+
+    spectra = fetch.([Threads.@spawn (mat -> eigen(Hermitian(mat)))(mat) for mat in values(hamiltonian)])
+    Threads.@threads for (index, F) in collect(zip(keys(hamiltonian), spectra))
+        maxNumSector = ifelse(maxNum == 0, length(F.values), minimum((length(F.values), maxNum)))
+        @inbounds eigvals[index] = roundTo.(sort(F.values)[1:maxNumSector], tolerance)
+        @inbounds eigvecs[index] = fetch.([Threads.@spawn (v -> multiplyDict(basisStates[index], v))(roundTo.(F.vectors[:, i], tolerance))
+                                           for i in sortperm(F.values)[1:maxNumSector]])
+
     end
     if !isnothing(pbar)
         finish!(pbar)
     end
     return eigvals, eigvecs
-end
-
-
-function rotateStates(basis::Vector{Dict{BitVector, Float64}}, transformation::Vector{Vector{Float64}})
-    newBasis = Dict{BitVector, Float64}[Dict{BitVector, Float64}() for _ in transformation]
-    # loop over the eigenvectors of the transformation
-    # (for eg. eigenvector = [-0.5, 0.5, 0.5, 0.5])
-    for (i, eigenvector) in collect(enumerate(transformation))
-
-        # loop over the v_i^j
-        for (j, multiplier) in enumerate(eigenvector)
-            if abs(multiplier) < 1e-10
-                continue
-            end
-
-            # create the new basis states: {|1>: v_i^1 * b_{1, old}, |2>: v_i^2 * b_{2, old} ... }
-            multipliedState = Dict(q => multiplier * b for (q, b) in basis[j])
-            mergewith!(+, newBasis[i], multipliedState)
-        end
-        newBasis[i] = Dict(k => v for (k,v) in newBasis[i] if abs(v) > 1e-10)
-        @assert !isempty(newBasis[i])
-    end
-    return newBasis
 end
