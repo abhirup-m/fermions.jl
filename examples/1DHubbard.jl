@@ -1,8 +1,6 @@
 #### Iterative diagonalisation solution of the 1D Hubbard model ####
 using ProgressMeter, LinearAlgebra, Plots
-include("../src/base.jl")
-include("../src/correlations.jl")
-include("../src/iterativeDiag.jl")
+using fermions
 
 function dimerHamiltonian(U, t)
     hopping = Dict(
@@ -42,7 +40,7 @@ end
 
 function main(numSteps, U)
     t = 1.0
-    initBasis = BasisStates(4; occCriteria=x -> x ∈ [1, 2, 3], magzCriteria = x -> x ∈ [-1, 0, 1])#; magzCriteria=magzCriteria, occCriteria=occCriteria)
+    initBasis = fermions.BasisStates(4; occCriteria=x -> x ∈ [1, 2, 3], magzCriteria = x -> x ∈ [-1, 0, 1])#; magzCriteria=magzCriteria, occCriteria=occCriteria)
     retainSize = 50
     hamiltonianFamily = [dimerHamiltonian(U, t)]
     numStatesFamily = Int64[2]
@@ -51,7 +49,7 @@ function main(numSteps, U)
              )
         push!(numStatesFamily, 2 + i)
     end
-    spectrumFamily = iterativeDiagonaliser(hamiltonianFamily, initBasis, numStatesFamily, retainSize;
+    spectrumFamily = fermions.iterativeDiagonaliser(hamiltonianFamily, initBasis, numStatesFamily, retainSize;
                                            occCriteria= (x,y) -> x ∈ [y-1, y, y+1], magzCriteria = x -> x ∈ [-1, 0, 1]
                                           )#; occCriteria=occCriteria, magzCriteria = magzCriteria)
     plots = []
@@ -65,7 +63,7 @@ function main(numSteps, U)
         probe = Dict(("-", [2 * numStates - 1]) => 1.0)
         probeDag = Dict(("+", [2 * numStates - 1]) => 1.0)
         freqArray = collect(range(-10, stop=10, length=500))
-        specfunc = specFunc(groundState, energyGs, E, X, probe, probeDag, freqArray, 0.0001)
+        specfunc = fermions.specFunc(groundState, energyGs, E, X, probe, probeDag, freqArray, 0.0001)
 
         push!(plots, plot(freqArray, specfunc, linewidth=2, xlabel="\$\\omega\$", ylabel="\$A(\\omega)\$", size=(300, 200 * length(plots))))
     end
