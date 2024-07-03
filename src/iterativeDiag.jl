@@ -4,12 +4,19 @@ product states on to existing states. For eg. |10> + |01> -> (|10> + |01>)⊗|1>
 function expandBasis(
         basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, 
         numAdditionalSites::Int64,
-        energyVals::Dict{Tuple{Int64, Int64}, Vector{Float64}},
-        retainSize::Int64;
+        energyVals::Dict{Tuple{Int64, Int64}, Vector{Float64}};
         occCriteria::Function = (x,y) -> true,
         magzCriteria::Function = x -> true
     )
     @assert numAdditionalSites > 0
+
+
+    # for each new basis state, the variable 'diagElements' stores the energy 
+    # of the old eigenstate from which the new basis state was derived. Serves
+    # two purposes:(i) sorts the full set of new basis states so that we can 
+    # take the M least energetic states (truncation), and (ii) these energy
+    # values form the diagonal elements of the new Nth Hamiltonian.
+    diagElements = Dict{Tuple{Int64, Int64}, Vector{Float64}}()
 
     numLevelsOld = length.(keys(collect(values(basisStates))[1][1]))[1]
 
@@ -32,46 +39,42 @@ function expandBasis(
                 allowedSectors[(totalOcc, totalMagz)] = []
             end
             push!(allowedSectors[(totalOcc, totalMagz)], ((occ, magz), collect(newBitCombination)))
+            if (totalOcc, totalMagz) ∉ keys(diagElements)
+                diagElements[(totalOcc, totalMagz)] = []
+            end
+            diagElements[(totalOcc, totalMagz)] = [diagElements[(totalOcc, totalMagz)]; energyVals[(occ, magz)]]
         end
     end
 
     # stores the new expanded basis
     newBasisStates = Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}(k => [] for k in keys(allowedSectors))
 
-    # for each new basis state, the variable 'diagElements' stores the energy 
-    # of the old eigenstate from which the new basis state was derived. Serves
-    # two purposes:(i) sorts the full set of new basis states so that we can 
-    # take the M least energetic states (truncation), and (ii) these energy
-    # values form the diagonal elements of the new Nth Hamiltonian.
-    diagElements = Dict{Tuple{Int64, Int64}, Vector{Float64}}(k => [] for k in keys(allowedSectors))
+    @showprogress desc="expand basis" Threads.@threads for (newSector, possibilities) in collect(allowedSectors)
 
-    Threads.@threads for (newSector, possibilities) in collect(allowedSectors)
+        newBasisStates[newSector] = fetch.([Threads.@spawn ((x,y) -> Dict(vcat(k, x) => v for (k,v) in y))(newBitCombination, basisStateDict)
+                                            for (oldSector, newBitCombination) in possibilities 
+                                            for (energy, basisStateDict) in zip(energyVals[oldSector],basisStates[oldSector])
+                                           ])
 
-        for (oldSector, newBitCombination) in possibilities
+        """
             # loop over the computational basis components of the old state
             for (energy, basisStateDict) in zip(energyVals[oldSector], basisStates[oldSector])
                 # form new basis states by joining the new and the old 
                 # computational states: |10> -><- |0> = |100>
-                expandedBasisStates = [vcat(key, newBitCombination)
+                @time expandedBasisStates = [vcat(key, newBitCombination)
                                        for key in keys(basisStateDict)]
 
-                push!(newBasisStates[newSector], Dict(zip(expandedBasisStates, values(basisStateDict))))
-                push!(diagElements[newSector], energy)
+                @time push!(newBasisStates[newSector], Dict(zip(expandedBasisStates, values(basisStateDict))))
+                @time push!(diagElements[newSector], energy)
             end
         end
+        """
         if isempty(newBasisStates[newSector])
             delete!(newBasisStates, newSector)
             delete!(diagElements, newSector)
         end
     end
 
-    # retain only up to 'retainSize' number of states.
-    # keep the ones with lowest energy in the old basis.
-    Threads.@threads for (k, statesArr) in collect(newBasisStates)
-        keepUpto = minimum((length(newBasisStates[k]), retainSize))
-        newBasisStates[k] = newBasisStates[k][sortperm(diagElements[k])][1:keepUpto]
-        diagElements[k] = sort(diagElements[k])[1:keepUpto]
-    end
     return newBasisStates, diagElements
 end
 
@@ -89,6 +92,7 @@ function iterativeDiagonaliser(
         retainSize::Int64;
         occCriteria::Function = (x,y) -> true,
         magzCriteria::Function = x -> true,
+        keepfrom::String="IR",
         tolerance::Float64=1e-12
     )
     @assert length(hamiltonianFamily) == length(numStatesFamily)
@@ -103,7 +107,7 @@ function iterativeDiagonaliser(
     diagElements = Dict{Tuple{Int64, Int64}, Vector{Float64}}(k => zeros(length(v)) for (k, v) in basisStates)
 
     # loop over the Hamiltonians H_N.
-    @showprogress for (i, hamiltonian) in enumerate(hamiltonianFamily)
+    @showprogress desc="iterative diag." for (i, hamiltonian) in enumerate(hamiltonianFamily)
 
         # at Nth step on bringing sites 'q' into the Hamiltonian,
         # full hamiltonian H_N is H_N = H_{N-1} + H_{N-1,q} + H_q,
@@ -112,7 +116,6 @@ function iterativeDiagonaliser(
 
         # matrix for the H_{N-1,q} + H_q part.
         hamiltonianMatrix = operatorMatrix(basisStates, hamiltonian)
-
         # Adds the matrix elements for H_{N-1}. Since the present basis
         # is the eigenbasis of H_{N-1}, these matrix elements are the diagonal ones.
         for k in keys(hamiltonianMatrix)
@@ -121,16 +124,16 @@ function iterativeDiagonaliser(
 
         # diagonalise this matrix, keeping only 'retainSize' 
         # number of the new eigenstates.
-        spectrum = getSpectrum(basisStates, hamiltonianMatrix; maxNum=retainSize, tolerance=tolerance)
+        spectrum = getSpectrum(basisStates, hamiltonianMatrix; maxNum=retainSize, keepfrom=keepfrom, tolerance=tolerance)
 
         push!(spectrumFamily, spectrum)
         @assert keys(basisStates) == keys(spectrum[1]) == keys(spectrum[2])
-
         # create basis out of the eigenstates
         basisStates = spectrum[2]
+
         if i < length(numStatesFamily)
             # expand the new basis to accomodate the new sites for the next step.
-            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1], retainSize; 
+            basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1]; 
                                                           occCriteria=occCriteria, magzCriteria=magzCriteria)
         end
     end

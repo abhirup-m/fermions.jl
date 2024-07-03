@@ -61,8 +61,8 @@ end
 function specFunc(
         groundState::Dict{BitVector,Float64},
         energyGs::Float64,
-        eigVals::Dict{Tuple{Int64, Int64}, Vector{Float64}}, 
-        eigVecs::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}},
+        eigVals::Tuple{Dict{Tuple{Int64, Int64}, Vector{Float64}}, Dict{Tuple{Int64, Int64}, Vector{Float64}}}, 
+        eigVecs::Tuple{Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}},
         probe::Dict{Tuple{String,Vector{Int64}},Float64},
         probeDag::Dict{Tuple{String,Vector{Int64}},Float64},
         freqArray::Vector{Float64},
@@ -88,17 +88,18 @@ function specFunc(
 
     # loop over eigenstates of the excited symmetry sectors,
     # calculated overlaps and multiply the appropriate denominators.
-    for (i, stateDict) in collect(enumerate(eigVecs[excitedSector]))
+    for (i, stateDict) in collect(enumerate(eigVecs[1][excitedSector]))
         for key in intersect(keys(excitedState), keys(stateDict))
             overlap = abs(stateDict[key] * excitedState[key])^2
-            specFuncArray .+= overlap * broadening ./ ((freqArray .+ energyGs .- eigVals[excitedSector][i]) .^ 2 .+ broadening ^ 2)
+            specFuncArray .+= overlap * broadening ./ ((freqArray .+ energyGs .- eigVals[1][excitedSector][i]) .^ 2 .+ broadening ^ 2)
         end
     end
-    for (i, stateDict) in collect(enumerate(eigVecs[excitedSectorDag]))
+    for (i, stateDict) in collect(enumerate(eigVecs[2][excitedSectorDag]))
         for key in intersect(keys(excitedStateDag), keys(stateDict))
             overlapDag = abs(stateDict[key] * excitedStateDag[key])^2
-            specFuncArray .+= overlapDag * broadening ./ ((freqArray .- energyGs .+ eigVals[excitedSectorDag][i]) .^ 2 .+ broadening ^ 2)
+            specFuncArray .+= overlapDag * broadening ./ ((freqArray .- energyGs .+ eigVals[2][excitedSectorDag][i]) .^ 2 .+ broadening ^ 2)
         end
     end
+    specFuncArray ./= sum(specFuncArray) * abs(freqArray[2] - freqArray[1])
     return specFuncArray
 end

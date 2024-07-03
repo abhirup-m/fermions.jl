@@ -21,7 +21,7 @@ end
 
 function multiplyDict(dicts, multipliers)
     @assert length(dicts) == length(multipliers)
-    return mergewith(+, fetch.([Threads.@spawn ((dict, m) -> Dict(k => v * m for (k, v) in dict))(dict, m) for (dict, m) in zip(dicts, multipliers)])...)
+    return mergewith(+, fetch.([Threads.@spawn ((dict, m) -> Dict(k => v * m for (k, v) in dict))(dict, m) for (dict, m) in zip(dicts, multipliers) if m != 0])...)
 end
 
 
@@ -117,7 +117,7 @@ function operatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVec
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
 
     # loop over symmetry sectors of the basis
-    Threads.@threads for (key, bstates) in collect(basisStates)
+    @showprogress desc="matrix" Threads.@threads for (key, bstates) in collect(basisStates)
 
         # loop over basis states within the symmetry sector.
         # These states will act as incoming states in terms
@@ -135,7 +135,12 @@ function operatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVec
 
                 # calculate overlap between the outgoing state <ϕ| and the 
                 # modified incoming state O|ψ>.
-                overlap = sum([newStateDict[key] * rowState[key] for key in intersect(keys(newStateDict), keys(rowState))])
+                overlap = 0
+                for key in keys(newStateDict)
+                    if key in keys(rowState)
+                    overlap += newStateDict[key] * rowState[key]
+                    end
+                end
                 operatorFullMatrix[key][row, col] = abs(overlap) > tolerance ? overlap : 0
                 operatorFullMatrix[key][col, row] = operatorFullMatrix[key][row, col]'
             end
@@ -166,7 +171,8 @@ end
 function getSpectrum(
         basisStates::Dict{Tuple{Int64,Int64},Vector{Dict{BitVector, Float64}}},
         hamiltonian::Dict{Tuple{Int64,Int64},Matrix{Float64}}; 
-        tolerance::Float64=1e-14, maxNum::Int64=0, progressEnabled::Bool=false
+        tolerance::Float64=1e-14, maxNum::Int64=0, keepfrom="IR",
+        progressEnabled::Bool=false
     )
     for (k, v) in hamiltonian
         if !ishermitian(v) 
@@ -185,13 +191,13 @@ function getSpectrum(
         pbar = Progress(length(hamiltonian))
     end
 
-    spectra = fetch.([Threads.@spawn (mat -> eigen(Hermitian(mat)))(mat) for mat in values(hamiltonian)])
-    Threads.@threads for (index, F) in collect(zip(keys(hamiltonian), spectra))
+    @showprogress "eigen" for (index, mat) in collect(hamiltonian)
+        F = eigen(Hermitian(mat))
         maxNumSector = ifelse(maxNum == 0, length(F.values), minimum((length(F.values), maxNum)))
+        sliceRange = keepfrom == "IR" ? (1:maxNumSector) : ((length(F.values) - maxNumSector + 1):length(F.values))
         @inbounds eigvals[index] = roundTo.(sort(F.values)[1:maxNumSector], tolerance)
         @inbounds eigvecs[index] = fetch.([Threads.@spawn (v -> multiplyDict(basisStates[index], v))(roundTo.(F.vectors[:, i], tolerance))
-                                           for i in sortperm(F.values)[1:maxNumSector]])
-
+                                           for i in sortperm(F.values)[sliceRange]])
     end
     if !isnothing(pbar)
         finish!(pbar)
