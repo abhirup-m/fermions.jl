@@ -10,7 +10,6 @@ function expandBasis(
     )
     @assert numAdditionalSites > 0
 
-
     # for each new basis state, the variable 'diagElements' stores the energy 
     # of the old eigenstate from which the new basis state was derived. Serves
     # two purposes:(i) sorts the full set of new basis states so that we can 

@@ -4,7 +4,7 @@ function gstateCorrelation(gstate::Dict{BitVector, Float64}, correlationOperator
     # loop over the pairs (|m>, c_m)
     
     # check that state is normalised: ∑ c_m^2 = 1
-    @assert sum(values(gstate) .^ 2) ≈ 1
+    @assert isapprox(sum(values(gstate) .^ 2), 1, atol = 1e-6)
 
     # check the action of the operator O on the ground state
     opOnState = applyOperatorOnState(gstate, correlationOperator)
