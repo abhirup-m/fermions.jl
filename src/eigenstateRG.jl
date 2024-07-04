@@ -52,7 +52,7 @@ function getWavefunctionRG(basisFunction, initCouplings, numEntangledSites::Inte
 end
 
 
-function correlationRG(basisFunction, stateFlowArray::Vector{Dict{BitVector, Float64}}, correlationOperators)
+function correlationRG(stateFlowArray::Vector{Dict{BitVector, Float64}}, correlationOperators)
     numLevelsArr = [length(collect(keys(state))[1]) for state in stateFlowArray]
     correlationRGResults = [Float64[] for _ in correlationOperators]
     for state in stateFlowArray
