@@ -28,11 +28,8 @@ function ApplyInverseTransform(state, unitaryOperatorFunction, alpha, sectors)
     return state
 end
 
-function getWavefunctionRG(basisFunction, initCouplings, numEntangledSites::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, stateExpansionFunction, sectors::String, displayGstate=false)
+function getWavefunctionRG(basisStates::Dict{BitVector, Float64}, initCouplings, numEntangledSites::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, stateExpansionFunction, sectors::String, displayGstate=false)
     
-    basisStates = basisFunction(numEntangledSites)
-    @assert length(basisStates) == 1
-    basisStates = collect(values(basisStates))[1]
     initState = InitWavefunction(basisStates, initCouplings, hamiltonianFunction)
     stateFlowArray = Dict{BitVector, Float64}[]
     push!(stateFlowArray, initState)

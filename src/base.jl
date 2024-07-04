@@ -117,7 +117,7 @@ function operatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVec
     operatorFullMatrix = Dict(key => zeros(length(value), length(value)) for (key, value) in basisStates)
 
     # loop over symmetry sectors of the basis
-    @showprogress desc="matrix" Threads.@threads for (key, bstates) in collect(basisStates)
+    Threads.@threads for (key, bstates) in collect(basisStates)
 
         # loop over basis states within the symmetry sector.
         # These states will act as incoming states in terms
@@ -191,7 +191,7 @@ function getSpectrum(
         pbar = Progress(length(hamiltonian))
     end
 
-    @showprogress "eigen" for (index, mat) in collect(hamiltonian)
+    for (index, mat) in collect(hamiltonian)
         F = eigen(Hermitian(mat))
         maxNumSector = ifelse(maxNum == 0, length(F.values), minimum((length(F.values), maxNum)))
         sliceRange = keepfrom == "IR" ? (1:maxNumSector) : ((length(F.values) - maxNumSector + 1):length(F.values))

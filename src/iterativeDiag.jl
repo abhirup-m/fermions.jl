@@ -48,7 +48,7 @@ function expandBasis(
     # stores the new expanded basis
     newBasisStates = Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}(k => [] for k in keys(allowedSectors))
 
-    @showprogress desc="expand basis" Threads.@threads for (newSector, possibilities) in collect(allowedSectors)
+    Threads.@threads for (newSector, possibilities) in collect(allowedSectors)
 
         newBasisStates[newSector] = fetch.([Threads.@spawn ((x,y) -> Dict(vcat(k, x) => v for (k,v) in y))(newBitCombination, basisStateDict)
                                             for (oldSector, newBitCombination) in possibilities 
@@ -113,6 +113,7 @@ function iterativeDiagonaliser(
         # where H_q is the terms acting purely on q, while H_{N-1,q}
         # is the set of terms that couple 'q' with the N-1 states.
 
+        println("$i. Creating matrix.")
         # matrix for the H_{N-1,q} + H_q part.
         hamiltonianMatrix = operatorMatrix(basisStates, hamiltonian)
         # Adds the matrix elements for H_{N-1}. Since the present basis
@@ -121,6 +122,7 @@ function iterativeDiagonaliser(
             hamiltonianMatrix[k] .+= diagm(diagElements[k])
         end
 
+        println("$i. Diagonalising matrix.")
         # diagonalise this matrix, keeping only 'retainSize' 
         # number of the new eigenstates.
         spectrum = getSpectrum(basisStates, hamiltonianMatrix; maxNum=retainSize, keepfrom=keepfrom, tolerance=tolerance)
@@ -130,6 +132,7 @@ function iterativeDiagonaliser(
         # create basis out of the eigenstates
         basisStates = spectrum[2]
 
+        println("$i. Expanding basis.")
         if i < length(numStatesFamily)
             # expand the new basis to accomodate the new sites for the next step.
             basisStates, diagElements = expandBasis(basisStates, numStatesFamily[i+1] - numStatesFamily[i], spectrum[1]; 
