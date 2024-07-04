@@ -1,4 +1,4 @@
-function getWavefunctionRG(initState::Dict{BitVector, Float64}, initCouplings, numEntangledSites::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, stateExpansionFunction, sectors::String, displayGstate=false)
+function getWavefunctionRG(initState::Dict{BitVector, Float64}, initCouplings, numEntangledSites::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, stateExpansionFunction, sectors::String, tolerance::Float64=1e-16)
     
     stateFlowArray = Dict{BitVector, Float64}[]
     push!(stateFlowArray, initState)
@@ -10,7 +10,7 @@ function getWavefunctionRG(initState::Dict{BitVector, Float64}, initCouplings, n
         mergewith!(+, newState, stateRenormalisation...)
 
         total_norm = sum(values(newState) .^ 2)^0.5
-        map!(x -> x / total_norm, values(newState))
+        newState= Dict(k => v/total_norm for (k,v) in newState if abs(v) > tolerance)
         push!(stateFlowArray, newState)
     end
 
