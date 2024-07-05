@@ -1,4 +1,4 @@
-function getWavefunctionRG(initState::Dict{BitVector, Float64}, initCouplings, numEntangledSites::Integer, numReverseSteps::Integer, hamiltonianFunction, unitaryOperatorFunction, stateExpansionFunction, sectors::String; tolerance::Float64=1e-16)
+function getWavefunctionRG(initState::Dict{BitVector, Float64}, numEntangledSites::Integer, numReverseSteps::Integer, unitaryOperatorFunction, stateExpansionFunction, sectors::String; tolerance::Float64=1e-16)
     
     stateFlowArray = Dict{BitVector, Float64}[]
     push!(stateFlowArray, initState)
@@ -10,7 +10,7 @@ function getWavefunctionRG(initState::Dict{BitVector, Float64}, initCouplings, n
         stateRenormalisation = fetch.([Threads.@spawn applyOperatorOnState(newState, Dict(k => v)) for (k,v) in unitaryOperatorList])
         mergewith!(+, newState, stateRenormalisation...)
 
-        newState= Dict(k => v/total_norm for (k,v) in newState if abs(v) > tolerance)
+        newState= Dict(k => v for (k,v) in newState if abs(v) > tolerance)
         total_norm = sum(values(newState) .^ 2)^0.5
         newState= Dict(k => v/total_norm for (k,v) in newState)
         push!(stateFlowArray, newState)
