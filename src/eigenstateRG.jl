@@ -21,17 +21,14 @@ function getWavefunctionRG(initState::Dict{BitVector, Float64}, numEntangledSite
 end
 
 
-function correlationRG(stateFlowArray::Vector{Dict{BitVector, Float64}}, correlationOperators)
-    numLevelsArr = [length(collect(keys(state))[1]) for state in stateFlowArray]
-    correlationRGResults = [Float64[] for _ in correlationOperators]
-    for state in stateFlowArray
-        for (i, operator) in enumerate(correlationOperators)
-            push!(correlationRGResults[i], 0)
-            MPsi = applyOperatorOnState(state, operator)
-            for (bstate, coeff) in MPsi
-                correlationRGResults[i][end] += bstate ∈ keys(state) ? coeff * state[bstate] : 0
-            end
+function correlationRG(stateFlowArray::Vector{Dict{BitVector, Float64}}, correlationOperators::Vector{Dict{Tuple{String, Vector{Int64}}, Float64}})
+    correlationRG = []
+    for (state, operator) in zip(stateFlowArray, correlationOperators)
+        push!(correlationRG, 0.0)
+        MPsi = applyOperatorOnState(state, operator)
+        for (bstate, coeff) in MPsi
+            correlationRG[end] += bstate ∈ keys(state) ? coeff * state[bstate] : 0
         end
     end
-    return correlationRGResults
+    return correlationRG
 end
