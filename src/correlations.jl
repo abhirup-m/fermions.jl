@@ -16,20 +16,23 @@ end
 
 
 function reducedDM(groundState::Dict{BitVector, Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
-    nonReducingIndices = setdiff(1:length(collect(keys(groundState))[1]), reducingIndices)
     if length(reducingConfigs) == 0
         reducingConfigs = [collect(config) for config in Iterators.product(fill([1, 0], length(reducingIndices))...)]
     end
-    nonReducingConfigs = vec(collect(Iterators.product(fill([1, 0], length(nonReducingIndices))...)))
-    reducingCoeffs = Dict{BitVector, Dict{BitVector, Float64}}(BitVector(config) => Dict(BitVector(configPrime) => 0.0 
-                                                                        for configPrime in nonReducingConfigs) for config in reducingConfigs)
+
+    nonReducingIndices = setdiff(1:length(collect(keys(groundState))[1]), reducingIndices)
+    reducingCoeffs = Dict{BitVector, Dict{BitVector, Float64}}(BitVector(config) => Dict()
+                                                                     for config in reducingConfigs)
     for (state, coeff) in groundState
-        if state[reducingIndices] ∈ reducingConfigs
-            reducingCoeffs[state[reducingIndices]][state[nonReducingIndices]] += coeff
+        reducingConfig = state[reducingIndices]
+        nonReducingConfig = state[nonReducingIndices]
+        if reducingConfig ∉ reducingConfigs
+            continue
         end
+        reducingCoeffs[reducingConfig][nonReducingConfig] = coeff
     end
     reducedDMatrix = zeros(length(reducingConfigs), length(reducingConfigs))
-    for ((i1, c1), (i2, c2)) in Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs))
+    Threads.@threads for ((i1, c1), (i2, c2)) in collect(Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs)))
         reducedDMatrix[i1, i2] = sum(values(merge(*, reducingCoeffs[collect(c1)], reducingCoeffs[collect(c2)])))
     end
     return reducedDMatrix
