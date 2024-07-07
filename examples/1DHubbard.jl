@@ -43,7 +43,7 @@ end
 function main(numSteps, U)
     t = 1.0
     initBasis = BasisStates(4; occCriteria=x -> x ∈ [1, 2, 3], magzCriteria = x -> x ∈ [-1, 0, 1])#; magzCriteria=magzCriteria, occCriteria=occCriteria)
-    retainSize = 20
+    retainSize = 50
     hamiltonianFamily = [dimerHamiltonian(U, t)]
     numStatesFamily = Int64[2]
     for i in 1:numSteps
@@ -52,8 +52,9 @@ function main(numSteps, U)
         push!(numStatesFamily, 2 + i)
     end
     spectrumFamilyGS = iterativeDiagonaliser(hamiltonianFamily, initBasis, numStatesFamily, retainSize;
-                                           occCriteria= (x,y) -> x ∈ [y-1, y, y+1], magzCriteria = x -> x ∈ [-1, 0, 1]
+                                           #occCriteria= (x,y) -> x ∈ [y-1, y, y+1], magzCriteria = x -> x ∈ [-1, 0, 1]
                                           )
+    return
     # spectrumFamilyES = iterativeDiagonaliser(hamiltonianFamily, initBasis, numStatesFamily, retainSize;
                                            # occCriteria= (x,y) -> x ∈ [y-1], magzCriteria = x -> x ∈ [-2, -1, 0], keepfrom="UV"
                                           # )
@@ -81,4 +82,4 @@ function main(numSteps, U)
     run(`rm $names`)
 end
 
-main(12, 1.0)
+main(5, 0.0)

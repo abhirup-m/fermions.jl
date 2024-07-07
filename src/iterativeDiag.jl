@@ -27,7 +27,6 @@ function expandBasis(
     allowedSectors = Dict{Tuple{Int64, Int64}, Vector{Tuple{Tuple{Int64, Int64}, Vector{Int64}}}}()
     for (occ, magz) in keys(basisStates) 
         for newBitCombination in Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...)
-            println(newBitCombination, numAdditionalSites)
             totalOcc = occ + sum(newBitCombination)
             totalMagz = magz + sum(newBitCombination[1:2:end]) - sum(newBitCombination[2:2:end])
             numLevelsNew = numLevelsOld + length(newBitCombination)
