@@ -15,24 +15,50 @@ function gstateCorrelation(gstate::Dict{BitVector, Float64}, correlationOperator
 end
 
 
+"""Given a state |Ψ>, calculates the reduced density matrix ρ_A = ∑_i ⟨i|ρ|i⟩ for the subsystem A where 
+i sums over all configurations of the subsystem A. The subsystem A is specified by the argument
+`reducingIndices` which specifies the indices in the representation that go into forming A. Also
+accepts an optional argument `reducingConfigs` that specifies a subset of states of A to sum over.
+"""
 function reducedDM(groundState::Dict{BitVector, Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
+
+    # get all the configurations of the subsystem A in order to perform the partial trace.
     if length(reducingConfigs) == 0
         reducingConfigs = [collect(config) for config in Iterators.product(fill([1, 0], length(reducingIndices))...)]
     end
 
+    # indices of the degrees of freedom that will not be summed over.
     nonReducingIndices = setdiff(1:length(collect(keys(groundState))[1]), reducingIndices)
     reducingCoeffs = Dict{BitVector, Dict{BitVector, Float64}}(BitVector(config) => Dict()
                                                                      for config in reducingConfigs)
+
+    # |ψ⟩ can be written as ∑ c_{im} |i>|m>, where i is a state in the subspace A,
+    # while m is a state in the subspace A-complement.
     for (state, coeff) in groundState
+
+        # get |i>
         reducingConfig = state[reducingIndices]
+
+        # get |m>
         nonReducingConfig = state[nonReducingIndices]
         if reducingConfig ∉ reducingConfigs
             continue
         end
+
+        # store c_im by classifying according to i and m
         reducingCoeffs[reducingConfig][nonReducingConfig] = coeff
     end
+    println("-----------------")
+    for key in keys(reducingCoeffs[[0, 1]])
+        if key in keys(reducingCoeffs[[1, 0]])
+            println(key, (reducingCoeffs[[1, 0]][key], reducingCoeffs[[0, 1]][key]))
+        end
+    end
+    println("-----------------")
+
     reducedDMatrix = zeros(length(reducingConfigs), length(reducingConfigs))
-    Threads.@threads for ((i1, c1), (i2, c2)) in collect(Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs)))
+    # Threads.@threads for ((i1, c1), (i2, c2)) in collect(Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs)))
+    for ((i1, c1), (i2, c2)) in Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs))
         reducedDMatrix[i1, i2] = sum(values(merge(*, reducingCoeffs[collect(c1)], reducingCoeffs[collect(c2)])))
     end
     return reducedDMatrix
