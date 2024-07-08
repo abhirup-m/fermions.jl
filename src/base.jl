@@ -204,3 +204,10 @@ function getSpectrum(
     end
     return eigvals, eigvecs
 end
+
+
+function StateOverlap(state1::Dict{BitVector, Float64}, state2::Dict{BitVector, Float64})
+    shortState, longState = ifelse(length(state1) < length(state2), (state1, state2), (state2, state1))
+    overlap = sum(fetch.([Threads.@spawn (k -> state1[k] * state2[k])(key) for key in keys(shortState) if haskey(longState, key)]))
+    return overlap
+end
