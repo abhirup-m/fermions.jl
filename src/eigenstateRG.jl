@@ -1,12 +1,14 @@
-function getWavefunctionRG(initState::Dict{BitVector, Float64}, numEntangledSites::Integer, numReverseSteps::Integer, unitaryOperatorFunction, stateExpansionFunction, sectors::String; tolerance::Float64=1e-16)
+function getWavefunctionRG(initState::Dict{BitVector, Float64}, alphaValues::Vector{Float64}, numSteps::Integer, unitaryOperatorFunction::Function, stateExpansionFunction::Function, sectors::String; tolerance::Float64=1e-16)
     
+    numEntangled = div(length(collect(keys(initState))[1]), 2)
     stateFlowArray = Dict{BitVector, Float64}[]
     push!(stateFlowArray, initState)
     
-    pbar = Progress(numReverseSteps; dt=0.1)
-    for step in 1:numReverseSteps
+    pbar = Progress(numSteps; dt=0.1)
+    for alpha in alphaValues
         newState = stateExpansionFunction(stateFlowArray[end])
-        unitaryOperatorList = unitaryOperatorFunction(step)
+        unitaryOperatorList = unitaryOperatorFunction(alpha, numEntangled, sectors)
+        numEntangled = div(length(collect(keys(newState))[1]), 2)
         stateRenormalisation = fetch.([Threads.@spawn applyOperatorOnState(newState, Dict(k => v)) for (k,v) in unitaryOperatorList])
         mergewith!(+, newState, stateRenormalisation...)
 
