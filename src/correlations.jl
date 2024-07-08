@@ -48,18 +48,11 @@ function reducedDM(groundState::Dict{BitVector, Float64}, reducingIndices::Vecto
         # store c_im by classifying according to i and m
         reducingCoeffs[reducingConfig][nonReducingConfig] = coeff
     end
-    println("-----------------")
-    for key in keys(reducingCoeffs[[0, 1]])
-        if key in keys(reducingCoeffs[[1, 0]])
-            println(key, (reducingCoeffs[[1, 0]][key], reducingCoeffs[[0, 1]][key]))
-        end
-    end
-    println("-----------------")
 
     reducedDMatrix = zeros(length(reducingConfigs), length(reducingConfigs))
-    # Threads.@threads for ((i1, c1), (i2, c2)) in collect(Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs)))
-    for ((i1, c1), (i2, c2)) in Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs))
-        reducedDMatrix[i1, i2] = sum(values(merge(*, reducingCoeffs[collect(c1)], reducingCoeffs[collect(c2)])))
+    Threads.@threads for ((i1, c1), (i2, c2)) in collect(Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs)))
+        commonKeys = intersect(keys(reducingCoeffs[collect(c1)]), keys(reducingCoeffs[collect(c2)]))
+        reducedDMatrix[i1, i2] = sum([reducingCoeffs[collect(c1)][key] * reducingCoeffs[collect(c2)][key] for key in commonKeys])
     end
     return reducedDMatrix
 end
