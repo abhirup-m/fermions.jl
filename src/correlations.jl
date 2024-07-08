@@ -1,17 +1,15 @@
 """Calculate static correlation function ⟨ψ|O|ψ⟩ of the provided operator."""
-function gstateCorrelation(gstate::Dict{BitVector, Float64}, correlationOperator::Dict{Tuple{String,Vector{Int64}},Float64})
+function FastCorrelation(state::Dict{BitVector, Float64}, operator::Dict{Tuple{String,Vector{Int64}},Float64})
     # Gstate vector is of the form {|1>: c_1, |2>: c_2, ... |n>: c_n}.
     # loop over the pairs (|m>, c_m)
     
     # check that state is normalised: ∑ c_m^2 = 1
-    @assert isapprox(sum(values(gstate) .^ 2), 1, atol = 1e-6)
+    @assert isapprox(sum(values(state) .^ 2), 1, atol = 1e-6)
 
-    # check the action of the operator O on the ground state
-    opOnState = applyOperatorOnState(gstate, correlationOperator)
 
-    # calculate the overlap of the new state with the ground state
-    expecValue = sum([gstate[key] * opOnState[key] for key in intersect(keys(opOnState), keys(gstate))])
-    return expecValue
+    correlation = sum(fetch.([Threads.@spawn StateOverlap(state, ApplyOperator(state, Dict(k => v))) 
+                        for (k, v) in operator]))
+    return correlation
 end
 
 

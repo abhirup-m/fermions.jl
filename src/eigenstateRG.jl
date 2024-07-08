@@ -9,7 +9,7 @@ function getWavefunctionRG(initState::Dict{BitVector, Float64}, alphaValues::Vec
         newState = stateExpansionFunction(stateFlowArray[end])
         unitaryOperatorList = unitaryOperatorFunction(alpha, numEntangled, sectors)
         numEntangled = div(length(collect(keys(newState))[1]), 2)
-        stateRenormalisation = fetch.([Threads.@spawn applyOperatorOnState(newState, Dict(k => v)) for (k,v) in unitaryOperatorList])
+        stateRenormalisation = fetch.([Threads.@spawn ApplyOperator(newState, Dict(k => v)) for (k,v) in unitaryOperatorList])
         mergewith!(+, newState, stateRenormalisation...)
 
         newState= Dict(k => v for (k,v) in newState if abs(v) > tolerance)
@@ -20,17 +20,4 @@ function getWavefunctionRG(initState::Dict{BitVector, Float64}, alphaValues::Vec
     end
 
     return stateFlowArray
-end
-
-
-function correlationRG(stateFlowArray::Vector{Dict{BitVector, Float64}}, correlationOperators::Vector{Dict{Tuple{String, Vector{Int64}}, Float64}})
-    correlationRG = []
-    for (state, operator) in zip(stateFlowArray, correlationOperators)
-        push!(correlationRG, 0.0)
-        MPsi = applyOperatorOnState(state, operator)
-        for (bstate, coeff) in MPsi
-            correlationRG[end] += bstate ∈ keys(state) ? coeff * state[bstate] : 0
-        end
-    end
-    return correlationRG
 end

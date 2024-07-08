@@ -71,7 +71,7 @@ function TransformBit(qubit::Bool, operator::Char)
 end
 
 
-function applyOperatorOnState(stateDict::Dict{BitVector,Float64}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
+function ApplyOperator(stateDict::Dict{BitVector,Float64}, operatorList::Dict{Tuple{String,Vector{Int64}},Float64})
     @assert maximum([maximum(opMembers) for (_, opMembers) in keys(operatorList)]) ≤ length(collect(keys(stateDict))[1])
 
     # define a dictionary for the final state obtained after applying 
@@ -125,7 +125,7 @@ function operatorMatrix(basisStates::Dict{Tuple{Int64,Int64}, Vector{Dict{BitVec
         Threads.@threads for (col, colState) in collect(enumerate(bstates))
 
             # get action of operator on incoming basis state |ψ>
-            newStateDict = applyOperatorOnState(colState, operatorList)
+            newStateDict = ApplyOperator(colState, operatorList)
 
             # again loop over the basis states, this term for the outgoing states <ϕ|
             for (row, rowState) in enumerate(bstates)
@@ -207,7 +207,10 @@ end
 
 
 function StateOverlap(state1::Dict{BitVector, Float64}, state2::Dict{BitVector, Float64})
-    shortState, longState = ifelse(length(state1) < length(state2), (state1, state2), (state2, state1))
-    overlap = sum(fetch.([Threads.@spawn (k -> state1[k] * state2[k])(key) for key in keys(shortState) if haskey(longState, key)]))
+    commonKeys = intersect(keys(state1), keys(state2))
+    if isempty(commonKeys)
+        return 0
+    end
+    overlap = sum(fetch.([Threads.@spawn (k -> state1[k] * state2[k])(key) for key in commonKeys]))
     return overlap
 end
