@@ -23,6 +23,24 @@ function ExpandBasis(
 end
 
 
+function ClassifyBasis(basisStates)
+    classifiedBasis = Dict{Tuple{Int64, Int64}, typeof(basisStates)}()
+
+    # Multhreading doesn't help here, already tried!
+    for stateDict in basisStates
+        bstate = collect(keys(stateDict))[1]
+        totOcc = sum(bstate)
+        totMagzArr = sum(@view bstate[1:2:end]) - sum(@view bstate[2:2:end])
+        if (totOcc, totMagzArr) ∉ keys(classifiedBasis)
+            classifiedBasis[(totOcc, totMagzArr)] = []
+        end
+        push!(classifiedBasis[(totOcc, totMagzArr)], stateDict)
+    end
+
+    return classifiedBasis
+end
+
+
 """Main function for iterative diagonalisation. Gives the approximate low-energy
 spectrum of a hamiltonian through the following algorithm: first diagonalises a
 Hamiltonian with few degrees of freedom, retains a fixed Ns number of low-energy
