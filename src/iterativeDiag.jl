@@ -1,80 +1,25 @@
+using IterTools
+
 """Expands the basis to accomodate new 1-particle states by tacking 
 product states on to existing states. For eg. |10> + |01> -> (|10> + |01>)⊗|1>.
 """
-function expandBasis(
-        basisStates::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, 
-        numAdditionalSites::Int64,
-        energyVals::Dict{Tuple{Int64, Int64}, Vector{Float64}};
-        occCriteria::Function = (x,y) -> true,
-        magzCriteria::Function = x -> true
+function ExpandBasis(
+        basis::Vector{Dict{BitVector, Float64}}, 
+        sector::Tuple{Int64, Int64}, 
+        eigvals::Vector{Float64}, 
+        numNew::Int64,
     )
-    @assert numAdditionalSites > 0
+    @assert length(basis) == length(eigvals)
+    expandedBasis = Dict{typeof(sector), typeof(basis)}()
+    diagElements = Dict{typeof(sector), Vector{Float64}}()
 
-    # for each new basis state, the variable 'diagElements' stores the energy 
-    # of the old eigenstate from which the new basis state was derived. Serves
-    # two purposes:(i) sorts the full set of new basis states so that we can 
-    # take the M least energetic states (truncation), and (ii) these energy
-    # values form the diagonal elements of the new Nth Hamiltonian.
-    diagElements = Dict{Tuple{Int64, Int64}, Vector{Float64}}()
-
-    numLevelsOld = length.(keys(collect(values(basisStates))[1][1]))[1]
-
-    # each new basis states is associated with an old basis state from which 
-    # it was derived. These old basis states are actually eigenstates of the
-    # N-1-th hamiltonian in an iterative diagonalisation scheme, and are
-    # themselves associated with energy eigenvalues.
-
-    allowedSectors = Dict{Tuple{Int64, Int64}, Vector{Tuple{Tuple{Int64, Int64}, Vector{Int64}}}}()
-    for (occ, magz) in keys(basisStates) 
-        for newBitCombination in Iterators.product(repeat([(0,1),], 2 * numAdditionalSites)...)
-            totalOcc = occ + sum(newBitCombination)
-            totalMagz = magz + sum(newBitCombination[1:2:end]) - sum(newBitCombination[2:2:end])
-            numLevelsNew = numLevelsOld + length(newBitCombination)
-            @assert numLevelsNew % 2 == 0
-            if !occCriteria(totalOcc, trunc(Int, numLevelsNew / 2)) || !magzCriteria(totalMagz)
-                continue
-            end
-            if (totalOcc, totalMagz) ∉ keys(allowedSectors)
-                allowedSectors[(totalOcc, totalMagz)] = []
-            end
-            push!(allowedSectors[(totalOcc, totalMagz)], ((occ, magz), collect(newBitCombination)))
-            if (totalOcc, totalMagz) ∉ keys(diagElements)
-                diagElements[(totalOcc, totalMagz)] = []
-            end
-            diagElements[(totalOcc, totalMagz)] = [diagElements[(totalOcc, totalMagz)]; energyVals[(occ, magz)]]
-        end
+    Threads.@threads for newComb in collect(product(repeat([[0, 1]], 2*numNew)...))
+        newSector = sector .+ (sum(newComb), 
+                               sum(newComb[1:2:end]) - sum(newComb[2:2:end]))
+        expandedBasis[newSector] = [Dict(vcat.(keys(stateDict), newComb) .=> values(stateDict)) for stateDict in basis]
+        diagElements[newSector] = eigvals
     end
-
-    # stores the new expanded basis
-    newBasisStates = Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}(k => [] for k in keys(allowedSectors))
-
-    Threads.@threads for (newSector, possibilities) in collect(allowedSectors)
-
-        newBasisStates[newSector] = fetch.([Threads.@spawn ((x,y) -> Dict(vcat(k, x) => v for (k,v) in y))(newBitCombination, basisStateDict)
-                                            for (oldSector, newBitCombination) in possibilities 
-                                            for (energy, basisStateDict) in zip(energyVals[oldSector],basisStates[oldSector])
-                                           ])
-
-        """
-            # loop over the computational basis components of the old state
-            for (energy, basisStateDict) in zip(energyVals[oldSector], basisStates[oldSector])
-                # form new basis states by joining the new and the old 
-                # computational states: |10> -><- |0> = |100>
-                @time expandedBasisStates = [vcat(key, newBitCombination)
-                                       for key in keys(basisStateDict)]
-
-                @time push!(newBasisStates[newSector], Dict(zip(expandedBasisStates, values(basisStateDict))))
-                @time push!(diagElements[newSector], energy)
-            end
-        end
-        """
-        if isempty(newBasisStates[newSector])
-            delete!(newBasisStates, newSector)
-            delete!(diagElements, newSector)
-        end
-    end
-
-    return newBasisStates, diagElements
+    return expandedBasis, diagElements
 end
 
 
