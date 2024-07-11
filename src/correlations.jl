@@ -46,7 +46,6 @@ function reducedDM(groundState::Dict{BitVector,Float64}, reducingIndices::Vector
         # store c_im by classifying according to i and m
         reducingCoeffs[reducingConfig][nonReducingConfig] = coeff
     end
-
     reducedDMatrix = zeros(length(reducingConfigs), length(reducingConfigs))
     Threads.@threads for ((i1, c1), (i2, c2)) in collect(Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs)))
         commonKeys = intersect(keys(reducingCoeffs[collect(c1)]), keys(reducingCoeffs[collect(c2)]))
@@ -56,11 +55,13 @@ function reducedDM(groundState::Dict{BitVector,Float64}, reducingIndices::Vector
 end
 
 
-function vnEntropy(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
+function vnEntropy(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[], tolerance=1e-10)
     reducedDMatrix = reducedDM(groundState, reducingIndices; reducingConfigs=reducingConfigs)
-    eigenvalues = eigvals(Hermitian(reducedDMatrix))
-    eigenvalues[eigenvalues.<1e-16] .= 0
+    eigenvalues = eigvals(reducedDMatrix)
+    eigenvalues[eigenvalues .< tolerance] .= 0
+    eigenvalues ./= sum(eigenvalues)
     @assert all(x -> x ≥ 0, eigenvalues)
+    @assert isapprox(sum(eigenvalues), 1; atol = tolerance)
     return -sum(eigenvalues .* log.(replace(eigenvalues, 0 => 1e-10)))
 end
 

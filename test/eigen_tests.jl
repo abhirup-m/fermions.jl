@@ -18,9 +18,9 @@ end
 
 @testset "Ground States" begin
     basisStates = BasisStates(4)
-    eps = rand()
     hop_t = rand()
-    U = rand()
+    U = abs(rand())
+    eps = -U/2
     Δ = (U^2 + 16 * hop_t^2)^0.5
     operatorList = HubbardDimerOplist([eps, eps, eps, eps], [U, U], [hop_t, hop_t])
     eigvals, eigvecs = Spectrum(operatorList, basisStates)
