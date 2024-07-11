@@ -1,14 +1,14 @@
 """Calculate static correlation function ⟨ψ|O|ψ⟩ of the provided operator."""
-function FastCorrelation(state::Dict{BitVector, Float64}, operator::Dict{Tuple{String,Vector{Int64}},Float64})
+function FastCorrelation(state::Dict{BitVector,Float64}, operator::Vector{Tuple{String,Vector{Int64},Float64}})
     # Gstate vector is of the form {|1>: c_1, |2>: c_2, ... |n>: c_n}.
     # loop over the pairs (|m>, c_m)
-    
+
     # check that state is normalised: ∑ c_m^2 = 1
-    @assert isapprox(sum(values(state) .^ 2), 1, atol = 1e-6)
+    @assert isapprox(sum(values(state) .^ 2), 1, atol=1e-6)
 
 
-    correlation = sum(fetch.([Threads.@spawn StateOverlap(state, ApplyOperator(state, Dict(k => v))) 
-                        for (k, v) in operator]))
+    correlation = sum(fetch.([Threads.@spawn StateOverlap(state, ApplyOperator([term], state))
+                              for term in operator]))
     return correlation
 end
 
@@ -18,7 +18,7 @@ i sums over all configurations of the subsystem A. The subsystem A is specified 
 `reducingIndices` which specifies the indices in the representation that go into forming A. Also
 accepts an optional argument `reducingConfigs` that specifies a subset of states of A to sum over.
 """
-function reducedDM(groundState::Dict{BitVector, Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
+function reducedDM(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
 
     # get all the configurations of the subsystem A in order to perform the partial trace.
     if length(reducingConfigs) == 0
@@ -27,8 +27,8 @@ function reducedDM(groundState::Dict{BitVector, Float64}, reducingIndices::Vecto
 
     # indices of the degrees of freedom that will not be summed over.
     nonReducingIndices = setdiff(1:length(collect(keys(groundState))[1]), reducingIndices)
-    reducingCoeffs = Dict{BitVector, Dict{BitVector, Float64}}(BitVector(config) => Dict()
-                                                                     for config in reducingConfigs)
+    reducingCoeffs = Dict{BitVector,Dict{BitVector,Float64}}(BitVector(config) => Dict()
+                                                             for config in reducingConfigs)
 
     # |ψ⟩ can be written as ∑ c_{im} |i>|m>, where i is a state in the subspace A,
     # while m is a state in the subspace A-complement.
@@ -56,20 +56,20 @@ function reducedDM(groundState::Dict{BitVector, Float64}, reducingIndices::Vecto
 end
 
 
-function vnEntropy(groundState::Dict{BitVector, Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
+function vnEntropy(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
     reducedDMatrix = reducedDM(groundState, reducingIndices; reducingConfigs=reducingConfigs)
     eigenvalues = eigvals(Hermitian(reducedDMatrix))
-    eigenvalues[eigenvalues .< 1e-16] .= 0
+    eigenvalues[eigenvalues.<1e-16] .= 0
     @assert all(x -> x ≥ 0, eigenvalues)
     return -sum(eigenvalues .* log.(replace(eigenvalues, 0 => 1e-10)))
 end
 
 
 function mutInfo(
-        groundState::Dict{BitVector, Float64}, 
-        reducingIndices::Tuple{Vector{Int64}, Vector{Int64}};
-        reducingConfigs::Tuple{Vector{BitVector}, Vector{BitVector}}=(BitVector[], BitVector[])
-    )
+    groundState::Dict{BitVector,Float64},
+    reducingIndices::Tuple{Vector{Int64},Vector{Int64}};
+    reducingConfigs::Tuple{Vector{BitVector},Vector{BitVector}}=(BitVector[], BitVector[])
+)
     combinedConfigs = vec([[c1; c2] for (c1, c2) in Iterators.product(reducingConfigs...)])
     SEE_A = vnEntropy(groundState, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
     SEE_B = vnEntropy(groundState, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
@@ -79,15 +79,15 @@ end
 
 
 function specFunc(
-        groundState::Dict{BitVector,Float64},
-        energyGs::Float64,
-        eigVals::Tuple{Dict{Tuple{Int64, Int64}, Vector{Float64}}, Dict{Tuple{Int64, Int64}, Vector{Float64}}}, 
-        eigVecs::Tuple{Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}, Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}},
-        probe::Dict{Tuple{String,Vector{Int64}},Float64},
-        probeDag::Dict{Tuple{String,Vector{Int64}},Float64},
-        freqArray::Vector{Float64},
-        broadening::Float64
-    )
+    groundState::Dict{BitVector,Float64},
+    energyGs::Float64,
+    eigVals::Tuple{Dict{Tuple{Int64,Int64},Vector{Float64}},Dict{Tuple{Int64,Int64},Vector{Float64}}},
+    eigVecs::Tuple{Dict{Tuple{Int64,Int64},Vector{Dict{BitVector,Float64}}},Dict{Tuple{Int64,Int64},Vector{Dict{BitVector,Float64}}}},
+    probe::Dict{Tuple{String,Vector{Int64}},Float64},
+    probeDag::Dict{Tuple{String,Vector{Int64}},Float64},
+    freqArray::Vector{Float64},
+    broadening::Float64
+)
 
     # calculate c_ν |GS>
     excitedState = applyOperatorOnState(groundState, probe)
@@ -111,13 +111,13 @@ function specFunc(
     for (i, stateDict) in collect(enumerate(eigVecs[1][excitedSector]))
         for key in intersect(keys(excitedState), keys(stateDict))
             overlap = abs(stateDict[key] * excitedState[key])^2
-            specFuncArray .+= overlap * broadening ./ ((freqArray .+ energyGs .- eigVals[1][excitedSector][i]) .^ 2 .+ broadening ^ 2)
+            specFuncArray .+= overlap * broadening ./ ((freqArray .+ energyGs .- eigVals[1][excitedSector][i]) .^ 2 .+ broadening^2)
         end
     end
     for (i, stateDict) in collect(enumerate(eigVecs[2][excitedSectorDag]))
         for key in intersect(keys(excitedStateDag), keys(stateDict))
             overlapDag = abs(stateDict[key] * excitedStateDag[key])^2
-            specFuncArray .+= overlapDag * broadening ./ ((freqArray .- energyGs .+ eigVals[2][excitedSectorDag][i]) .^ 2 .+ broadening ^ 2)
+            specFuncArray .+= overlapDag * broadening ./ ((freqArray .- energyGs .+ eigVals[2][excitedSectorDag][i]) .^ 2 .+ broadening^2)
         end
     end
     specFuncArray ./= sum(specFuncArray) * abs(freqArray[2] - freqArray[1])
