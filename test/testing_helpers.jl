@@ -20,16 +20,22 @@ end
 
 function HubbardDimerOplist(eps, U, hop_t)
     operatorList = Tuple{String,Vector{Int64},Float64}[]
-    push!(operatorList, ("n", [1], eps[1]))
-    push!(operatorList, ("n", [2], eps[2]))
-    push!(operatorList, ("n", [3], eps[3]))
-    push!(operatorList, ("n", [4], eps[4]))
-    push!(operatorList, ("nn", [1, 2], U[1]))
-    push!(operatorList, ("nn", [3, 4], U[2]))
-    push!(operatorList, ("+-", [1, 3], hop_t[1]))
-    push!(operatorList, ("+-", [3, 1], hop_t[1]))
-    push!(operatorList, ("+-", [2, 4], hop_t[2]))
-    push!(operatorList, ("+-", [4, 2], hop_t[2]))
+    if eps[1] != 0
+        push!(operatorList, ("n", [1], eps[1]))
+        push!(operatorList, ("n", [2], eps[2]))
+        push!(operatorList, ("n", [3], eps[3]))
+        push!(operatorList, ("n", [4], eps[4]))
+    end
+    if U[1] ≠ 0
+        push!(operatorList, ("nn", [1, 2], U[1]))
+        push!(operatorList, ("nn", [3, 4], U[2]))
+    end
+    if hop_t[1] ≠ 0
+        push!(operatorList, ("+-", [1, 3], hop_t[1]))
+        push!(operatorList, ("+-", [3, 1], hop_t[1]))
+        push!(operatorList, ("+-", [2, 4], hop_t[2]))
+        push!(operatorList, ("+-", [4, 2], hop_t[2]))
+    end
     return operatorList
 end
 

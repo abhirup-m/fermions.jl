@@ -8,10 +8,6 @@
         eigvals, eigvecs = Spectrum(operatorList, basis)
         comparisonMatrix = HubbardDimerMatrix(eps, U, hop_t)[(n, m)]
         eigvalTest, eigvecTest = eigen(comparisonMatrix)
-        if (n, m) == (2, 0)
-            display(eigvecs)
-            display(eigvecTest)
-        end
         @test eigvals ≈ eigvalTest
         for (v1, v2) in zip(eigvecs, [eigvecTest[:, i] for i in eachindex(eachrow(eigvecTest))])
             @test collect(values(v1)) ≈ collect(v2)
@@ -30,18 +26,16 @@ end
     eigvals, eigvecs = Spectrum(operatorList, basisStates)
     @test eigvals[1] ≈ 2 * eps + U / 2 - Δ / 2
 end
-@assert false
+
 
 @testset "Degenerate Ground States" begin
     basisStates = BasisStates(4)
+    display(basisStates)
     eps = -abs(rand())
     hop_t = 0
     U = -2 * eps
     operatorList = HubbardDimerOplist([eps, eps, eps, eps], [U, U], [hop_t, hop_t])
-    computedMatrix = generalOperatorMatrix(basisStates, operatorList)
-    eigvals, eigvecs = Spectrum(computedMatrix)
-    gsEnergy, groundStates, blocks = getGstate(eigvals, eigvecs)
-    @test gsEnergy ≈ 2 * eps
-    @test Set(blocks) == Set([(2, 0), (2, 0), (2, 2), (2, -2)])
-    @test sort(join.(groundStates)) == sort(join.([[0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [1.0], [1.0]]))
+    eigvals, eigvecs = Spectrum(operatorList, basisStates)
+    @test eigvals[1] == eigvals[2] == eigvals[3] == eigvals[4] ≈ 2 * eps
+    @test Set((eigvecs[1], eigvecs[2], eigvecs[3], eigvecs[4])) == Set((Dict([1, 0, 1, 0] => 1.0), Dict([0, 1, 0, 1] => 1.0), Dict([0, 1, 1, 0] => 1.0), Dict([1, 0, 0, 1] => 1.0)))
 end
