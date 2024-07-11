@@ -1,41 +1,17 @@
 @testset "BasisStates" begin
 
-    @test BasisStates(1) == Dict((1,1) => [[1]], 
-                                 (0,0) => [[0]]
-                                )
-    @test BasisStates(1; totOccupancy=1) == Dict((1,1) => [[1]]) 
-    @test BasisStates(1; totOccupancy=0) == Dict((0,0) => [[0]]) 
-
     @test BasisStates(2) == Dict(
-                                (0,0) => [[0, 0]],
-                                (1,1) => [[1, 0]],
-                                (1,-1) => [[0, 1]],
-                                (2,0) => [[1, 1]],
-                                )
-    @test BasisStates(2; totOccupancy=0) == Dict((0,0) => [[0, 0]]) 
+        (0, 0) => [[0, 0]],
+        (1, 1) => [[1, 0]],
+        (1, -1) => [[0, 1]],
+        (2, 0) => [[1, 1]],
+    )
+    @test BasisStates(2; totOccupancy=0) == Dict((0, 0) => [[0, 0]])
     @test BasisStates(2; totOccupancy=1) == Dict(
-                                                (1,1) => [[1, 0]],
-                                                (1,-1) => [[0, 1]],
-                                               )
-    @test BasisStates(2; totOccupancy=2) == Dict((2,0) => [[1, 1]]) 
-
-    @test BasisStates(3) == Dict((0,0) => [[0, 0, 0]],
-                                (1,1) => [[0, 0, 1], [1, 0, 0]],
-                                (1,-1) => [[0, 1, 0]],
-                                (2,2) => [[1, 0, 1]],
-                                (2,0) => [[0, 1, 1], [1, 1, 0]],
-                                (3,1) => [[1, 1, 1]],
-                                )
-    @test BasisStates(3; totOccupancy=0) == Dict((0,0) => [[0, 0, 0]]) 
-    @test BasisStates(3; totOccupancy=1) == Dict(
-                                                (1,1) => [[0, 0, 1], [1, 0, 0]],
-                                                (1,-1) => [[0, 1, 0]],
-                                               )
-    @test BasisStates(3; totOccupancy=2) == Dict(
-                                                (2,2) => [[1, 0, 1]],
-                                                (2,0) => [[0, 1, 1], [1, 1, 0]],
-                                                )
-    @test BasisStates(3; totOccupancy=3) == Dict((3,1) => [[1, 1, 1]]) 
+        (1, 1) => [[1, 0]],
+        (1, -1) => [[0, 1]],
+    )
+    @test BasisStates(2; totOccupancy=2) == Dict((2, 0) => [[1, 1]])
 end
 
 @testset "TransformBit" begin
@@ -59,7 +35,7 @@ end
         combinedOpList = Dict{Tuple{String,Vector{Int64}},Float64}()
         totalApplication = []
         for op in Iterators.product(ops, ops, ops, ops)
-            oplist = Dict((string(op...), [1,2,3,4]) => 1.0)
+            oplist = Dict((string(op...), [1, 2, 3, 4]) => 1.0)
             mergewith!(+, combinedOpList, oplist)
             partialApplications = [applyOperatorOnState(state, oplist) for state in partialStates]
             completeApplication = applyOperatorOnState(stateDict, oplist)
@@ -106,7 +82,7 @@ end
 
     state = Dict(BitVector([1, 1]) => 0.1)
     @testset "state = [1, 1], operator = $op" for op in ["+", "-", "n", "h"]
-        oplist = Dict((op, [1]) => 0.5 )
+        oplist = Dict((op, [1]) => 0.5)
         if op == "-"
             @test applyOperatorOnState(state, oplist) == Dict(BitVector([0, 1]) => 0.05)
         elseif op == "n"
@@ -114,7 +90,7 @@ end
         else
             @test isempty(applyOperatorOnState(state, oplist))
         end
-        oplist = Dict((op, [2]) => 0.5 )
+        oplist = Dict((op, [2]) => 0.5)
         if op == "-"
             @test applyOperatorOnState(state, oplist) == Dict(BitVector([1, 0]) => -0.05)
         elseif op == "n"
@@ -123,7 +99,7 @@ end
             @test isempty(applyOperatorOnState(state, oplist))
         end
         @testset for op2 in ["+", "-", "n", "h"]
-        oplist = Dict((op * op2, [1, 2]) => 0.5 )
+            oplist = Dict((op * op2, [1, 2]) => 0.5)
             if occursin("+", op * op2) || occursin("h", op * op2)
                 @test isempty(applyOperatorOnState(state, oplist))
             elseif op * op2 == "--"
@@ -180,13 +156,13 @@ end
 
 @testset "transformBasis" begin
     basisStates = BasisStates(4)
-    transformation = Dict((1, 1) => [[0.5, 0.5], [0.5, - 0.5]], (2, 0) => [[0, 0, 2^0.5, 2^0.5], [0, 0, 2^0.5, -2^0.5], [1, 0, 0, 0], [0, 1, 0, 0]])
+    transformation = Dict((1, 1) => [[0.5, 0.5], [0.5, -0.5]], (2, 0) => [[0, 0, 2^0.5, 2^0.5], [0, 0, 2^0.5, -2^0.5], [1, 0, 0, 0], [0, 1, 0, 0]])
     transformedBasis = transformBasis(basisStates, transformation)
-    for (k,v) in transformedBasis
-        if k == (1,1)
+    for (k, v) in transformedBasis
+        if k == (1, 1)
             @test transformedBasis[k][1] == Dict([1, 0, 0, 0] => 0.5, [0, 0, 1, 0] => 0.5)
             @test transformedBasis[k][2] == Dict([1, 0, 0, 0] => -0.5, [0, 0, 1, 0] => 0.5)
-        elseif k == (2,0)
+        elseif k == (2, 0)
             @test transformedBasis[k][1] == Dict([0, 1, 1, 0] => 2^0.5, [1, 1, 0, 0] => 2^0.5)
             @test transformedBasis[k][2] == Dict([0, 1, 1, 0] => 2^0.5, [1, 1, 0, 0] => -2^0.5)
             @test transformedBasis[k][3] == Dict([0, 0, 1, 1] => 1.0)

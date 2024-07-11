@@ -53,7 +53,7 @@ function main(numSteps, U)
         push!(numStatesFamily, 2 + i)
     end
 
-    IterDiag(
+    @time IterDiag(
         hamiltonianFamily,
         initBasis,
         numStatesFamily,

@@ -26,7 +26,6 @@ end
 
 
 function BasisStates(numLevels::Int64; totOccCriteria::Function=(x, N) -> true, magzCriteria::Function=x -> true, localCriteria::Function=x -> true)
-    @assert numLevels > 0 && numLevels % 2 == 0
     return [Dict(BitVector(config) => 1.0) for config in digits.(0:2^numLevels-1, base=2, pad=numLevels) |> reverse
             if totOccCriteria(config, numLevels) && magzCriteria(config) && localCriteria(config)]
 end
