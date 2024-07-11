@@ -1,7 +1,3 @@
-using IterTools
-include("base.jl")
-include("eigen.jl")
-
 """Expands the basis to accomodate new 1-particle states by tacking 
 product states on to existing states. For eg. |10> + |01> -> (|10> + |01>)⊗|1>.
 """

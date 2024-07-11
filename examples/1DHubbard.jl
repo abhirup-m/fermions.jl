@@ -1,5 +1,5 @@
 #### Iterative diagonalisation solution of the 1D Hubbard model ####
-using ProgressMeter, LinearAlgebra, Plots, Measures, BenchmarkTools
+using Plots, Measures, BenchmarkTools
 include("../src/base.jl")
 include("../src/correlations.jl")
 include("../src/eigen.jl")
