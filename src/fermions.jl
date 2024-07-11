@@ -2,7 +2,6 @@ module fermions
 
 using ProgressMeter
 using LinearAlgebra
-using IterTools
 
 include("base.jl")
 include("eigen.jl")

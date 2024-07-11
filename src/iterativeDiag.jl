@@ -11,7 +11,7 @@ function ExpandBasis(
 )
     @assert length(basis) == length(eigvals)
     newPairs = Tuple{NTuple{2 * numNew,Int64},Tuple{Int64,Int64}}[]
-    for newComb in collect(IterTools.product(repeat([[0, 1]], 2 * numNew)...))
+    for newComb in collect(Iterators.product(repeat([[0, 1]], 2 * numNew)...))
         newSector = sector .+ (sum(newComb),
             sum(newComb[1:2:end]) - sum(newComb[2:2:end]))
         if newSector ∉ keys(newClassifiedBasis)
