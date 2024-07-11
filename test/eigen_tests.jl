@@ -30,7 +30,6 @@ end
 
 @testset "Degenerate Ground States" begin
     basisStates = BasisStates(4)
-    display(basisStates)
     eps = -abs(rand())
     hop_t = 0
     U = -2 * eps

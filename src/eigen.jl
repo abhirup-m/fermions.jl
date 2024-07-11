@@ -4,7 +4,7 @@ function Spectrum(
     hamiltonian::Vector{Tuple{String,Vector{Int64},Float64}},
     basisStates::Vector{Dict{BitVector,Float64}};
     diagElements::Vector{Float64}=Float64[],
-    tolerance::Float64=1e-16,
+    tolerance::Float64=1e-15,
 )
     matrix = OperatorMatrix(basisStates, hamiltonian)
     keysArr = keys.(basisStates)
