@@ -25,9 +25,10 @@ function multiplyDict(dicts, multipliers)
 end
 
 
-function BasisStates(numLevels::Int64)
+function BasisStates(numLevels::Int64; totOccCriteria::Function=(x, N) -> true, magzCriteria::Function=x -> true, localCriteria::Function=x -> true)
     @assert numLevels > 0 && numLevels % 2 == 0
-    return [Dict(BitVector(config) => 1.0) for config in digits.(0:2^numLevels-1, base=2, pad=numLevels) |> reverse]
+    return [Dict(BitVector(config) => 1.0) for config in digits.(0:2^numLevels-1, base=2, pad=numLevels) |> reverse
+            if totOccCriteria(config, numLevels) && magzCriteria(config) && localCriteria(config)]
 end
 
 
@@ -45,7 +46,7 @@ function TransformBit(qubit::Bool, operator::Char)
 end
 
 
-function ApplyOperator(operator::Vector{Tuple{String, Vector{Int64}, Float64}}, incomingState::Dict{BitVector, Float64}; tolerance=1e-10)
+function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, incomingState::Dict{BitVector,Float64}; tolerance=1e-10)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
 
     outgoingState = typeof(incomingState)()
@@ -65,7 +66,7 @@ function ApplyOperator(operator::Vector{Tuple{String, Vector{Int64}, Float64}}, 
                 end
                 # calculate the fermionic exchange sign by counting the number of
                 # occupied states the operator has to "hop" over
-                exchangeSign = ifelse(operator in ["+", "-"], (-1) ^ sum(outgoingBasisState[1:siteIndex]), 1)
+                exchangeSign = ifelse(operator in ["+", "-"], (-1)^sum(outgoingBasisState[1:siteIndex]), 1)
 
                 outgoingBasisState[siteIndex] = newQubit
                 newCoefficient *= exchangeSign * factor
@@ -85,7 +86,7 @@ function ApplyOperator(operator::Vector{Tuple{String, Vector{Int64}, Float64}}, 
 end
 
 
-function OperatorMatrix(basisStates::Vector{Dict{BitVector, Float64}}, operator::Vector{Tuple{String, Vector{Int64}, Float64}})
+function OperatorMatrix(basisStates::Vector{Dict{BitVector,Float64}}, operator::Vector{Tuple{String,Vector{Int64},Float64}})
     operatorMatrix = zeros(length(basisStates), length(basisStates))
 
     for (incomingIndex, incomingState) in enumerate(basisStates)
@@ -123,7 +124,7 @@ function prettyPrint(state::BitVector)
 end
 
 
-function StateOverlap(state1::Dict{BitVector, Float64}, state2::Dict{BitVector, Float64})
+function StateOverlap(state1::Dict{BitVector,Float64}, state2::Dict{BitVector,Float64})
     commonKeys = intersect(keys(state1), keys(state2))
     if isempty(commonKeys)
         return 0
