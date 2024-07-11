@@ -52,8 +52,8 @@ end
     coeffs2 = rand(length(basis))
     allOperators = [[(o1 * o2 * o3 * o4, [1, 2, 3, 4], coeffs1[i])]
                     for (i, (o1, o2, o3, o4)) in enumerate(Iterators.product(repeat([["+", "-", "n", "h"]], 4)...))]
-    allStates = [Dict(k => coeffs2[i] * v for (k, v) in dict) for (i, dict) in enumerate(basis)]
     totalOperator = vcat(allOperators...)
+    allStates = [Dict(k => coeffs2[i] * v for (k, v) in dict) for (i, dict) in enumerate(basis)]
     totalState = mergewith(+, allStates...)
     totalOutgoingState = ApplyOperator(totalOperator, totalState)
     pieceWiseAddedState = mergewith(+, [ApplyOperator(operator, state) for operator in allOperators for state in allStates]...)
@@ -133,78 +133,28 @@ end
     end
 end
 
-@assert false
-
-"""
-@testset "GeneralOperatorMatrix" begin
-    basisStates = BasisStates(4)
+@testset "OperatorMatrix" begin
     eps = rand(4)
     hop_t = rand(2)
     U = rand(2)
     operatorList = HubbardDimerOplist(eps, U, hop_t)
-    computedMatrix = generalOperatorMatrix(basisStates, operatorList)
-    comparisonMatrix = HubbardDimerMatrix(eps, U, hop_t)
-    @test keys(comparisonMatrix) == keys(computedMatrix)
-    for key in keys(comparisonMatrix)
-        @test computedMatrix[key] ≈ comparisonMatrix[key]
+    @testset "sector=$((n, m))" for (n, m) in [(0, 0), (1, 1), (1, -1), (2, 2), (2, 0), (2, -2), (3, 1), (3, -1), (4, 0)]
+        basisStates = BasisStates(4; totOccCriteria=(x, N) -> sum(x) == n, magzCriteria=x -> sum(x[1:2:end]) - sum(x[2:2:end]) == m)
+        computedMatrix = OperatorMatrix(basisStates, operatorList)
+        comparisonMatrix = HubbardDimerMatrix(eps, U, hop_t)[(n, m)]
+        @test comparisonMatrix ≈ computedMatrix
     end
 end
 
 
-@testset "GeneralOperatorMatrixSet" begin
-    basisStates = BasisStates(4)
-    eps_arr = [rand(4) for _ in 1:3]
-    hop_t_arr = [rand(2) for _ in 1:3]
-    U_arr = [rand(2) for _ in 1:3]
-    couplingMatrix = Vector{Float64}[]
-    operatorList = nothing
-    for (eps, hop_t, U) in zip(eps_arr, hop_t_arr, U_arr)
-        operatorTermsValues = HubbardDimerOplist(eps, U, hop_t)
-        operatorList = collect(keys(operatorTermsValues))
-        push!(couplingMatrix, collect(values(operatorTermsValues)))
+@testset "StateOverlap" begin
+    basis = BasisStates(4)
+    for (b1, b2) in Iterators.product(basis, basis)
+        @test StateOverlap(b1, b2) == ifelse(b1 == b2, 1, 0)
     end
-    computedMatrixSet = generalOperatorMatrix(basisStates, operatorList, couplingMatrix)
-    comparisonMatrixSet = [HubbardDimerMatrix(eps_arr[i], U_arr[i], hop_t_arr[i]) for i in 1:3]
-    @test length(computedMatrixSet) == length(comparisonMatrixSet)
-    for (comparisonMatrix, computedMatrix) in zip(comparisonMatrixSet, computedMatrixSet)
-        @test keys(comparisonMatrix) == keys(computedMatrix)
-        for key in keys(comparisonMatrix)
-            @test computedMatrix[key] ≈ comparisonMatrix[key]
-        end
-    end
+    coeffs1 = rand(length(basis))
+    totalState1 = mergewith(+, [Dict(k => coeffs1[i] * v for (k, v) in dict) for (i, dict) in enumerate(basis)]...)
+    coeffs2 = rand(length(basis))
+    totalState2 = mergewith(+, [Dict(k => coeffs2[i] * v for (k, v) in dict) for (i, dict) in enumerate(basis)]...)
+    @test StateOverlap(totalState1, totalState2) ≈ sum(coeffs1 .* coeffs2)
 end
-
-@testset "transformBasis" begin
-    basisStates = BasisStates(4)
-    transformation = Dict((1, 1) => [[0.5, 0.5], [0.5, -0.5]], (2, 0) => [[0, 0, 2^0.5, 2^0.5], [0, 0, 2^0.5, -2^0.5], [1, 0, 0, 0], [0, 1, 0, 0]])
-    transformedBasis = transformBasis(basisStates, transformation)
-    for (k, v) in transformedBasis
-        if k == (1, 1)
-            @test transformedBasis[k][1] == Dict([1, 0, 0, 0] => 0.5, [0, 0, 1, 0] => 0.5)
-            @test transformedBasis[k][2] == Dict([1, 0, 0, 0] => -0.5, [0, 0, 1, 0] => 0.5)
-        elseif k == (2, 0)
-            @test transformedBasis[k][1] == Dict([0, 1, 1, 0] => 2^0.5, [1, 1, 0, 0] => 2^0.5)
-            @test transformedBasis[k][2] == Dict([0, 1, 1, 0] => 2^0.5, [1, 1, 0, 0] => -2^0.5)
-            @test transformedBasis[k][3] == Dict([0, 0, 1, 1] => 1.0)
-            @test transformedBasis[k][4] == Dict([1, 0, 0, 1] => 1.0)
-        else
-            @test transformedBasis[k] == basisStates[k]
-        end
-    end
-end
-
-@testset "Expand basis" begin
-    basisStates = BasisStates(2)
-    expandedBasis = expandBasis(basisStates, 1)
-    @test issetequal(keys(expandedBasis), ((0, 0), (1, 1), (1, -1), (2, 0), (2, 2), (2, -2), (3, 1), (3, -1), (4, 0)))
-    @test issetequal(expandedBasis[(0, 0)], (Dict([0, 0, 0, 0] => 1.0),))
-    @test issetequal(expandedBasis[(1, 1)], (Dict([1, 0, 0, 0] => 1.0), Dict([0, 0, 1, 0] => 1.0)))
-    @test issetequal(expandedBasis[(1, -1)], (Dict([0, 1, 0, 0] => 1.0), Dict([0, 0, 0, 1] => 1.0)))
-    @test issetequal(expandedBasis[(2, 2)], (Dict([1, 0, 1, 0] => 1.0),))
-    @test issetequal(expandedBasis[(2, 0)], (Dict([1, 1, 0, 0] => 1.0), Dict([0, 0, 1, 1] => 1.0), Dict([1, 0, 0, 1] => 1.0), Dict([0, 1, 1, 0] => 1.0)))
-    @test issetequal(expandedBasis[(2, -2)], (Dict([0, 1, 0, 1] => 1.0),))
-    @test issetequal(expandedBasis[(3, 1)], (Dict([1, 0, 1, 1] => 1.0), Dict([1, 1, 1, 0] => 1.0)))
-    @test issetequal(expandedBasis[(3, -1)], (Dict([0, 1, 1, 1] => 1.0), Dict([1, 1, 0, 1] => 1.0)))
-    @test issetequal(expandedBasis[(4, 0)], (Dict([1, 1, 1, 1] => 1.0),))
-end
-"""

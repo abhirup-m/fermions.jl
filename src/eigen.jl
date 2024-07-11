@@ -16,12 +16,10 @@ function Spectrum(
     eigenValues, eigenStates = eigen(matrix)
 
     eigenVecs = [Dict{BitVector,Float64}() for _ in eigenValues]
-    Threads.@threads for (j, vector) in collect(enumerate(eachrow(eigenStates)))
+    Threads.@threads for (j, vector) in collect(enumerate(eachcol(eigenStates)))
         for (i, c_i) in enumerate(vector)
             mergewith!(+, eigenVecs[j], Dict(keysArr[i] .=> c_i .* valuesArr[i]))
         end
-        # eigenVecs[j] = mergewith(+, [Dict(keys(basisStates[i]) .=> c_i .* values(basisStates[i]))
-        # for (i, c_i) in enumerate(vector)]...)
     end
     return eigenValues, eigenVecs
 end
