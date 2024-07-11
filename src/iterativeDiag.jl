@@ -14,7 +14,7 @@ function ExpandBasis(
     newDiagElementsClassified::Dict{Tuple{Int64,Int64},Vector{Float64}}=Dict{Tuple{Int64,Int64},Vector{Float64}}(),
 )
     @assert length(basis) == length(eigvals)
-    newPairs = []
+    newPairs = Tuple{NTuple{2 * numNew,Int64},Tuple{Int64,Int64}}[]
     for newComb in collect(IterTools.product(repeat([[0, 1]], 2 * numNew)...))
         newSector = sector .+ (sum(newComb),
             sum(newComb[1:2:end]) - sum(newComb[2:2:end]))
@@ -25,8 +25,11 @@ function ExpandBasis(
         push!(newPairs, (newComb, newSector))
     end
     Threads.@threads for (newComb, newSector) in newPairs
-        append!(newClassifiedBasis[newSector], [Dict([vcat(key, collect(newComb)) for key in keys(stateDict)] .=> values(stateDict)) for stateDict in basis])
         append!(newDiagElementsClassified[newSector], eigvals)
+        for stateDict in basis
+            newKeys = [vcat(key, collect(newComb)) for key in keys(stateDict)]
+            push!(newClassifiedBasis[newSector], Dict(newKeys .=> values(stateDict)))
+        end
     end
     return newClassifiedBasis, newDiagElementsClassified
 end
@@ -81,22 +84,20 @@ function IterDiag(
     diagElementsClassified = Dict(k => zeros(length(v)) for (k, v) in classifiedBasis)
 
     numDiffFlow = [n2 - n1 for (n1, n2) in zip(numSitesFlow[1:end-1], numSitesFlow[2:end])]
-    eigvalFlow = [Dict() for _ in hamFlow]
-    eigvecFlow = [Dict() for _ in hamFlow]
+    spectrumFlow = []
 
     for (i, hamiltonian) in enumerate(hamFlow)
+        push!(spectrumFlow, [])
         newClassifiedBasis = typeof(classifiedBasis)()
         newDiagElementsClassified = Dict{keytype(classifiedBasis),Vector{Float64}}()
-        spectrum = fetch.([Threads.@spawn Spectrum(hamiltonian, basis, diagElements=diagElementsClassified[sector]) for (sector, basis) in classifiedBasis])
-        for (sector, spectrumSector) in zip(keys(classifiedBasis), spectrum)
-            eigvalFlow[i][sector], eigvecFlow[i][sector] = spectrumSector
-        end
+        spectrumFlow[end] = Dict(keys(classifiedBasis) .=> fetch.([Threads.@spawn Spectrum(hamiltonian, basis, diagElements=diagElementsClassified[sector])
+                                                                   for (sector, basis) in classifiedBasis]))
         if i == length(hamFlow)
             continue
         end
         for sector in keys(classifiedBasis)
-            newClassifiedBasis, newDiagElementsClassified = ExpandBasis(eigvecFlow[i][sector], sector,
-                eigvalFlow[i][sector], numDiffFlow[i];
+            newClassifiedBasis, newDiagElementsClassified = ExpandBasis(spectrumFlow[end][sector][2], sector,
+                spectrumFlow[end][sector][1], numDiffFlow[i];
                 newClassifiedBasis=newClassifiedBasis, newDiagElementsClassified=newDiagElementsClassified)
         end
 
@@ -105,5 +106,5 @@ function IterDiag(
         end
         classifiedBasis, diagElementsClassified = TruncateBasis(newClassifiedBasis, newDiagElementsClassified, retainSize)
     end
-    return eigvalFlow, eigvecFlow
+    return spectrumFlow
 end
