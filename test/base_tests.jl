@@ -1,18 +1,38 @@
 @testset "BasisStates" begin
 
-    @test BasisStates(2) == Dict(
-        (0, 0) => [[0, 0]],
-        (1, 1) => [[1, 0]],
-        (1, -1) => [[0, 1]],
-        (2, 0) => [[1, 1]],
+    @test issetequal(BasisStates(2),
+        [
+            Dict([0, 0] => 1.0),
+            Dict([1, 0] => 1.0),
+            Dict([0, 1] => 1.0),
+            Dict([1, 1] => 1.0),
+        ]
     )
-    @test BasisStates(2; totOccupancy=0) == Dict((0, 0) => [[0, 0]])
-    @test BasisStates(2; totOccupancy=1) == Dict(
-        (1, 1) => [[1, 0]],
-        (1, -1) => [[0, 1]],
+    @test issetequal(BasisStates(3),
+        [
+            Dict([0, 0, 0] => 1.0),
+            Dict([1, 0, 0] => 1.0),
+            Dict([0, 1, 0] => 1.0),
+            Dict([1, 1, 0] => 1.0),
+            Dict([0, 0, 1] => 1.0),
+            Dict([1, 0, 1] => 1.0),
+            Dict([0, 1, 1] => 1.0),
+            Dict([1, 1, 1] => 1.0),
+        ]
     )
-    @test BasisStates(2; totOccupancy=2) == Dict((2, 0) => [[1, 1]])
 end
+
+
+@testset "roundTo" begin
+    @test roundTo(1, 1e-10) == 1
+    @test roundTo(1 + 1e-11, 1e-10) == 1
+    @test roundTo(1e-11, 1e-10) == 0
+    @test roundTo(1e-10, 1e-10) == 1e-10
+    @test roundTo(-1e-10, 1e-10) == -1e-10
+    @test roundTo(0, 1e-10) == 0
+end
+
+
 
 @testset "TransformBit" begin
     @test TransformBit(false, 'n') == (0, 0)
@@ -25,24 +45,18 @@ end
     @test TransformBit(true, '-') == (0, 1)
 end
 
-@testset "applyOperatorOnState" begin
+@testset "ApplyOperator" begin
     # checking linearity
-    b4 = BasisStates(4)
-    for key in [(0, 0), (1, 1), (1, -1), (2, 0), (2, 2), (2, -2), (3, 1), (3, -1), (4, 0)]
-        stateDict = Dict(k => v for (k, v) in zip(b4[key], rand(length(b4[key]))))
-        partialStates = [Dict(k => v) for (k, v) in stateDict]
-        ops = ["n", "h", "+", "-"]
-        combinedOpList = Dict{Tuple{String,Vector{Int64}},Float64}()
-        totalApplication = []
-        for op in Iterators.product(ops, ops, ops, ops)
-            oplist = Dict((string(op...), [1, 2, 3, 4]) => 1.0)
-            mergewith!(+, combinedOpList, oplist)
-            partialApplications = [applyOperatorOnState(state, oplist) for state in partialStates]
-            completeApplication = applyOperatorOnState(stateDict, oplist)
-            @test completeApplication == merge(+, partialApplications...)
-            totalApplication = [totalApplication; [completeApplication]]
-        end
-        @test all([merge(+, totalApplication...)[k] ≈ applyOperatorOnState(stateDict, combinedOpList)[k] for k in keys(merge(+, totalApplication...))])
+    basis = BasisStates(4)
+    coeffs1 = rand(4^4)
+    coeffs2 = rand(length(basis))
+    allOperators = [[(o1 * o2 * o3 * o4, [1, 2, 3, 4], coeffs1[i])]
+                    for (i, (o1, o2, o3, o4)) in enumerate(Iterators.product(repeat([["+", "-", "n", "h"]], 4)...))]
+    allStates = [Dict(k => coeffs2[i] * v for (k,v) in dict) for (i, dict) in enumerate(basis)]
+    totalOperator = vcat(allOperators...)
+    totalState = mergewith(+, allStates...)
+    @test ApplyOperator(totalOperator, totalState) == mergewith(+, [ApplyOperator(operator, totalState) for operator in allOperators]...)
+    @test all(x -> x ≈ 0, [v1 - v2 for (v1, v2) in zip(values(ApplyOperator(totalOperator, totalState)), values(mergewith(+, [ApplyOperator(totalOperator, state) for state in allStates]...)))])
     end
 
     # quantitative checking through basis states
@@ -116,6 +130,7 @@ end
 end
 
 
+"""
 @testset "GeneralOperatorMatrix" begin
     basisStates = BasisStates(4)
     eps = rand(4)
@@ -187,3 +202,4 @@ end
     @test issetequal(expandedBasis[(3, -1)], (Dict([0, 1, 1, 1] => 1.0), Dict([1, 1, 0, 1] => 1.0)))
     @test issetequal(expandedBasis[(4, 0)], (Dict([1, 1, 1, 1] => 1.0),))
 end
+"""

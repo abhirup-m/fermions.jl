@@ -14,14 +14,9 @@ but for a specified total magnetisation.
 """
 
 
+# rounds off a given float to the desired tolerance
 function roundTo(val, tolerance)
     return round(val, digits=trunc(Int, -log10(tolerance)))
-end
-
-
-function multiplyDict(dicts, multipliers)
-    @assert length(dicts) == length(multipliers)
-    return mergewith(+, fetch.([Threads.@spawn ((dict, m) -> Dict(k => v * m for (k, v) in dict))(dict, m) for (dict, m) in zip(dicts, multipliers) if m != 0])...)
 end
 
 
@@ -45,7 +40,7 @@ function TransformBit(qubit::Bool, operator::Char)
 end
 
 
-function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, incomingState::Dict{BitVector,Float64}; tolerance=1e-10)
+function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, incomingState::Dict{BitVector,Float64}; tolerance=1e-16)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
 
     outgoingState = typeof(incomingState)()
@@ -81,6 +76,7 @@ function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, in
         end
     end
 
+    outgoingState = Dict(k => roundTo(v, tolerance) for (k, v) in outgoingState)
     return outgoingState
 end
 
