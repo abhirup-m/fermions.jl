@@ -52,83 +52,88 @@ end
     coeffs2 = rand(length(basis))
     allOperators = [[(o1 * o2 * o3 * o4, [1, 2, 3, 4], coeffs1[i])]
                     for (i, (o1, o2, o3, o4)) in enumerate(Iterators.product(repeat([["+", "-", "n", "h"]], 4)...))]
-    allStates = [Dict(k => coeffs2[i] * v for (k,v) in dict) for (i, dict) in enumerate(basis)]
+    allStates = [Dict(k => coeffs2[i] * v for (k, v) in dict) for (i, dict) in enumerate(basis)]
     totalOperator = vcat(allOperators...)
     totalState = mergewith(+, allStates...)
-    @test ApplyOperator(totalOperator, totalState) == mergewith(+, [ApplyOperator(operator, totalState) for operator in allOperators]...)
-    @test all(x -> x ≈ 0, [v1 - v2 for (v1, v2) in zip(values(ApplyOperator(totalOperator, totalState)), values(mergewith(+, [ApplyOperator(totalOperator, state) for state in allStates]...)))])
+    totalOutgoingState = ApplyOperator(totalOperator, totalState)
+    pieceWiseAddedState = mergewith(+, [ApplyOperator(operator, state) for operator in allOperators for state in allStates]...)
+
+    @test keys(totalOutgoingState) == keys(pieceWiseAddedState)
+    for key in keys(totalOutgoingState)
+        @test totalOutgoingState[key] ≈ pieceWiseAddedState[key]
     end
 
     # quantitative checking through basis states
     state = Dict(BitVector([0, 0]) => 0.1)
     @testset "state = [0, 0], operator = $op" for op in ["+", "-", "n", "h"]
-        oplist = Dict((op, [1]) => 0.5)
+        oplist = [(op, [1], 0.5)]
         if op == "+"
-            @test applyOperatorOnState(state, oplist) == Dict(BitVector([1, 0]) => 0.05)
+            @test ApplyOperator(oplist, state) == Dict(BitVector([1, 0]) => 0.05)
         elseif op == "h"
-            @test applyOperatorOnState(state, oplist) == Dict(BitVector([0, 0]) => 0.05)
+            @test ApplyOperator(oplist, state) == Dict(BitVector([0, 0]) => 0.05)
         else
-            @test isempty(applyOperatorOnState(state, oplist))
+            @test isempty(ApplyOperator(oplist, state))
         end
-        oplist = Dict((op, [2]) => 0.5)
+        oplist = [(op, [2], 0.5)]
         if op == "+"
-            @test applyOperatorOnState(state, oplist) == Dict(BitVector([0, 1]) => 0.05)
+            @test ApplyOperator(oplist, state) == Dict(BitVector([0, 1]) => 0.05)
         elseif op == "h"
-            @test applyOperatorOnState(state, oplist) == Dict(BitVector([0, 0]) => 0.05)
+            @test ApplyOperator(oplist, state) == Dict(BitVector([0, 0]) => 0.05)
         else
-            @test isempty(applyOperatorOnState(state, oplist))
+            @test isempty(ApplyOperator(oplist, state))
         end
         @testset for op2 in ["+", "-", "n", "h"]
-            oplist = Dict((op * op2, [1, 2]) => 0.5)
+            oplist = [(op * op2, [1, 2], 0.5)]
             if occursin("-", op * op2) || occursin("n", op * op2)
-                @test isempty(applyOperatorOnState(state, oplist))
+                @test isempty(ApplyOperator(oplist, state))
             elseif op * op2 == "++"
-                @test applyOperatorOnState(state, oplist) == Dict(BitVector([1, 1]) => 0.05)
+                @test ApplyOperator(oplist, state) == Dict(BitVector([1, 1]) => 0.05)
             elseif op * op2 == "+h"
-                @test applyOperatorOnState(state, oplist) == Dict(BitVector([1, 0]) => 0.05)
+                @test ApplyOperator(oplist, state) == Dict(BitVector([1, 0]) => 0.05)
             elseif op * op2 == "h+"
-                @test applyOperatorOnState(state, oplist) == Dict(BitVector([0, 1]) => 0.05)
+                @test ApplyOperator(oplist, state) == Dict(BitVector([0, 1]) => 0.05)
             elseif op * op2 == "hh"
-                @test applyOperatorOnState(state, oplist) == Dict(BitVector([0, 0]) => 0.05)
+                @test ApplyOperator(oplist, state) == Dict(BitVector([0, 0]) => 0.05)
             end
         end
     end
 
     state = Dict(BitVector([1, 1]) => 0.1)
     @testset "state = [1, 1], operator = $op" for op in ["+", "-", "n", "h"]
-        oplist = Dict((op, [1]) => 0.5)
+        oplist = [(op, [1], 0.5)]
         if op == "-"
-            @test applyOperatorOnState(state, oplist) == Dict(BitVector([0, 1]) => 0.05)
+            @test ApplyOperator(oplist, state) == Dict(BitVector([0, 1]) => 0.05)
         elseif op == "n"
-            @test applyOperatorOnState(state, oplist) == Dict(BitVector([1, 1]) => 0.05)
+            @test ApplyOperator(oplist, state) == Dict(BitVector([1, 1]) => 0.05)
         else
-            @test isempty(applyOperatorOnState(state, oplist))
+            @test isempty(ApplyOperator(oplist, state))
         end
-        oplist = Dict((op, [2]) => 0.5)
+        oplist = [(op, [2], 0.5)]
         if op == "-"
-            @test applyOperatorOnState(state, oplist) == Dict(BitVector([1, 0]) => -0.05)
+            @test ApplyOperator(oplist, state) == Dict(BitVector([1, 0]) => -0.05)
         elseif op == "n"
-            @test applyOperatorOnState(state, oplist) == Dict(BitVector([1, 1]) => 0.05)
+            @test ApplyOperator(oplist, state) == Dict(BitVector([1, 1]) => 0.05)
         else
-            @test isempty(applyOperatorOnState(state, oplist))
+            @test isempty(ApplyOperator(oplist, state))
         end
-        @testset for op2 in ["+", "-", "n", "h"]
-            oplist = Dict((op * op2, [1, 2]) => 0.5)
+        @testset "state = [1, 1], operator2 = $op2" for op2 in ["+", "-", "n", "h"]
+            oplist = [(op * op2, [1, 2], 0.5)]
             if occursin("+", op * op2) || occursin("h", op * op2)
-                @test isempty(applyOperatorOnState(state, oplist))
+                @test isempty(ApplyOperator(oplist, state))
             elseif op * op2 == "--"
-                @test applyOperatorOnState(state, oplist) == Dict(BitVector([0, 0]) => -0.05)
+                @test ApplyOperator(oplist, state) == Dict(BitVector([0, 0]) => -0.05)
             elseif op * op2 == "-n"
-                @test applyOperatorOnState(state, oplist) == Dict(BitVector([0, 1]) => 0.05)
+                @test ApplyOperator(oplist, state) == Dict(BitVector([0, 1]) => 0.05)
             elseif op * op2 == "n-"
-                @test applyOperatorOnState(state, oplist) == Dict(BitVector([1, 0]) => -0.05)
+                @test ApplyOperator(oplist, state) == Dict(BitVector([1, 0]) => -0.05)
             elseif op * op2 == "nn"
-                @test applyOperatorOnState(state, oplist) == Dict(BitVector([1, 1]) => 0.05)
+                @test ApplyOperator(oplist, state) == Dict(BitVector([1, 1]) => 0.05)
             end
         end
     end
 end
 
+@assert false
 
 """
 @testset "GeneralOperatorMatrix" begin

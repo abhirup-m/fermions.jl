@@ -60,7 +60,7 @@ function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, in
                 end
                 # calculate the fermionic exchange sign by counting the number of
                 # occupied states the operator has to "hop" over
-                exchangeSign = ifelse(operator in ["+", "-"], (-1)^sum(outgoingBasisState[1:siteIndex]), 1)
+                exchangeSign = ifelse(operator in ['+', '-'], (-1)^sum(outgoingBasisState[1:siteIndex-1]), 1)
 
                 outgoingBasisState[siteIndex] = newQubit
                 newCoefficient *= exchangeSign * factor
