@@ -2,7 +2,7 @@
     basisStates = BasisStates(4)
     hop_t = rand()
     U = rand()
-    eps = -U/2
+    eps = -U / 2
     Δ = (U^2 + 16 * hop_t^2)^0.5
     operatorList = HubbardDimerOplist([eps, eps, eps, eps], [U, U], [hop_t, hop_t])
     eigvals, eigvecs = Spectrum(operatorList, basisStates)
@@ -17,7 +17,8 @@
 end
 
 
-@testset "Entanglement entropy" begin
+@testset "Entanglement entropy, Mutual information" begin
+
     @testset "θ = $(theta)" for theta in rand(10) .* 2π
         state = Dict(BitVector([1, 0]) => cos(theta), BitVector([0, 1]) => sin(theta))
         @test vnEntropy(state, [1]) ≈ vnEntropy(state, [2]) ≈ -cos(theta)^2 * log(cos(theta)^2) - sin(theta)^2 * log(sin(theta)^2)
@@ -25,5 +26,17 @@ end
 
     coeffs = ones(3)
     state = Dict(BitVector([1, 0, 1]) => coeffs[1], BitVector([1, 1, 0]) => coeffs[2], BitVector([0, 1, 1]) => coeffs[3])
-    @test vnEntropy(state, [3]) ≈ log(3)/3 + log(3/2) * 2 / 3
+    @test vnEntropy(state, [1, 2]) ≈ vnEntropy(state, [3]) ≈ log(3) / 3 + log(3 / 2) * 2 / 3
+
+    state = Dict(BitVector([1, 0, 1]) => rand(), BitVector([0, 1, 1]) => rand())
+    @test vnEntropy(state, [3]) ≈ 0
+
+    coeffs = [1.0, 1.0, 1.0]#[rand() for _ in 1:3]
+    state = Dict(BitVector([1, 0, 1]) => coeffs[1], BitVector([0, 1, 1]) => coeffs[2], BitVector([1, 1, 0]) => coeffs[3])
+    coeffs ./= sum(coeffs .^ 2)^0.5
+    @test vnEntropy(state, [1]) ≈ -(coeffs[1]^2 + coeffs[3]^2) * log(coeffs[1]^2 + coeffs[3]^2) - (coeffs[2]^2) * log(coeffs[2]^2)
+    @test vnEntropy(state, [2]) ≈ -(coeffs[3]^2 + coeffs[2]^2) * log(coeffs[3]^2 + coeffs[2]^2) - (coeffs[1]^2) * log(coeffs[1]^2)
+    @test vnEntropy(state, [1, 2]) ≈ -(coeffs[1]^2 + coeffs[2]^2) * log(coeffs[1]^2 + coeffs[2]^2) - (coeffs[3]^2) * log(coeffs[3]^2)
+    @test mutInfo(state, ([1], [2])) == vnEntropy(state, [1]) + vnEntropy(state, [2]) - vnEntropy(state, [1, 2])
+
 end
