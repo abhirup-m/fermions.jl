@@ -108,6 +108,7 @@ function SpecFunc(
     for (eigvl, stateDict) in zip(eigVals, eigVecs)
         particleWeight = StateOverlap(stateDict, excitedState)^2
         holeWeight = StateOverlap(stateDict, excitedStateDag)^2
+
         specFuncArray .+= particleWeight * broadening ./ ((freqArray .- energyGs .+ eigvl) .^ 2 .+ broadening^2)
         specFuncArray .+= holeWeight * broadening ./ ((freqArray .+ energyGs .- eigvl) .^ 2 .+ broadening^2)
     end

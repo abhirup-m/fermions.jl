@@ -18,13 +18,22 @@ end
 
 @testset "Ground States" begin
     basisStates = BasisStates(4)
-    hop_t = rand()
+    hop_t = abs(rand())
     U = abs(rand())
-    eps = -U/2
+    eps = -U / 2
     Δ = (U^2 + 16 * hop_t^2)^0.5
+    a1 = 0.5 * √((Δ - U) / Δ)
+    a2 = 2 * hop_t / √(Δ * (Δ - U))
     operatorList = HubbardDimerOplist([eps, eps, eps, eps], [U, U], [hop_t, hop_t])
     eigvals, eigvecs = Spectrum(operatorList, basisStates)
     @test eigvals[1] ≈ 2 * eps + U / 2 - Δ / 2
+    @test Set(keys(eigvecs[1])) == Set([[1, 0, 0, 1], [0, 0, 1, 1], [0, 1, 1, 0], [1, 1, 0, 0]])
+    scaledGstate = Dict(k => v / eigvecs[1][[1, 0, 0, 1]] for (k, v) in eigvecs[1])
+    @test scaledGstate[[1, 0, 0, 1]] == 1.0
+    @test scaledGstate[[0, 1, 1, 0]] == -1.0
+    @test scaledGstate[[0, 0, 1, 1]] ≈ a1 / a2
+    @test scaledGstate[[1, 1, 0, 0]] ≈ a1 / a2
+
 end
 
 
