@@ -9,8 +9,8 @@
         comparisonMatrix = HubbardDimerMatrix(eps, U, hop_t)[(n, m)]
         eigvalTest, eigvecTest = eigen(comparisonMatrix)
         @test eigvals ≈ eigvalTest
-        for (v1, v2) in zip(eigvecs, [eigvecTest[:, i] for i in eachindex(eachrow(eigvecTest))])
-            @test collect(values(v1)) ≈ collect(v2)
+        for (i, v2) in enumerate(eachcol(eigvecTest))
+            @test collect(values(eigvecs[i])) ./ collect(values(eigvecs[i]))[1] ≈ v2 ./ v2[1]
         end
     end
 end
