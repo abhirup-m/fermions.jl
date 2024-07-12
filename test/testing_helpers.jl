@@ -109,3 +109,28 @@ function dimerAdditionalHamiltonian(U, t, index)
     )
     return mergewith(+, hopping, correlation)
 end
+
+
+function simpleUnitaries(alpha, num_entangled, sectors)
+    IOMposition = 2 * num_entangled + 1
+    particleTerms = vcat([kondoOperatorsTest((2 * i - 1, IOMposition), alpha) for i in 2:num_entangled]...)
+    holeTerms = vcat([kondoOperatorsTest((IOMposition + 2, 2 * i - 1), alpha) for i in 2:num_entangled]...)
+    return [particleTerms; holeTerms]
+end
+
+
+function kondoOperatorsTest(momIndices::NTuple{2,Integer}, multiplier::Float64)
+    return [
+        ("n+-", [1, momIndices[1], momIndices[2]], 0.25 * multiplier),
+        ("n+-", [2, momIndices[1], momIndices[2]], -0.25 * multiplier),
+        ("n+-", [1, 1 + momIndices[1], momIndices[2] + 1], -0.25 * multiplier),
+        ("n+-", [2, 1 + momIndices[1], momIndices[2] + 1], 0.25 * multiplier),
+        ("+-+-", [1, 2, 1 + momIndices[1], momIndices[2]], 0.5 * multiplier),
+        ("+-+-", [2, 1, momIndices[1], momIndices[2] + 1], 0.5 * multiplier),
+    ]
+end
+
+
+function stateExpFunc1Ck(state::Dict{BitVector,Float64})
+    return Dict{keytype(state),valtype(state)}([key; [1, 1, 0, 0]] => val for (key, val) in state)
+end

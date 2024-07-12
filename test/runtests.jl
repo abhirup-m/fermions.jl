@@ -1,6 +1,7 @@
 include("../src/base.jl")
 include("../src/eigen.jl")
 include("../src/correlations.jl")
+include("../src/eigenstateRG.jl")
 include("../src/iterativeDiag.jl")
 include("testing_helpers.jl")
 

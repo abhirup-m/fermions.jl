@@ -1,11 +1,12 @@
 function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vector{Float64}, numSteps::Integer, unitaryOperatorFunction::Function, stateExpansionFunction::Function, sectors::String; tolerance::Float64=1e-16)
 
+    @assert numSteps ≤ length(alphaValues)
     numEntangled = div(length(collect(keys(initState))[1]), 2)
     stateFlowArray = Dict{BitVector,Float64}[]
     push!(stateFlowArray, initState)
 
     pbar = Progress(numSteps; dt=0.1)
-    for alpha in alphaValues
+    for alpha in alphaValues[1:numSteps]
         newState = stateExpansionFunction(stateFlowArray[end])
         unitaryOperatorList = unitaryOperatorFunction(alpha, numEntangled, sectors)
         numEntangled = div(length(collect(keys(newState))[1]), 2)
