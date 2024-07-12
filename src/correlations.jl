@@ -82,47 +82,34 @@ function mutInfo(
 end
 
 
-function specFunc(
-    groundState::Dict{BitVector,Float64},
-    energyGs::Float64,
-    eigVals::Tuple{Dict{Tuple{Int64,Int64},Vector{Float64}},Dict{Tuple{Int64,Int64},Vector{Float64}}},
-    eigVecs::Tuple{Dict{Tuple{Int64,Int64},Vector{Dict{BitVector,Float64}}},Dict{Tuple{Int64,Int64},Vector{Dict{BitVector,Float64}}}},
-    probe::Dict{Tuple{String,Vector{Int64}},Float64},
-    probeDag::Dict{Tuple{String,Vector{Int64}},Float64},
+function SpecFunc(
+    eigVals::Vector{Float64},
+    eigVecs::Vector{Dict{BitVector,Float64}},
+    probe::Tuple{String,Vector{Int64},Float64},
+    probeDag::Tuple{String,Vector{Int64},Float64},
     freqArray::Vector{Float64},
     broadening::Float64
 )
 
+    groundState = eigVecs[1]
+    energyGs = eigVals[1]
+
     # calculate c_ν |GS>
-    excitedState = applyOperatorOnState(groundState, probe)
+    excitedState = ApplyOperator([probe], groundState)
 
     # calculate c^†_ν |GS>
-    excitedStateDag = applyOperatorOnState(groundState, probeDag)
-
-    # calculate the quantum numbers of the symmetry sector in which
-    # the above excited states reside. We only need to the check the
-    # eigenstates in these symmetry sectors to calculate the overlaps.
-    excCompState = collect(keys(excitedState))[1]
-    excitedSector = (sum(excCompState), sum(excCompState[1:2:end]) - sum(excCompState[2:2:end]))
-    excCompStateDag = collect(keys(excitedStateDag))[1]
-    excitedSectorDag = (sum(excCompStateDag), sum(excCompStateDag[1:2:end]) - sum(excCompStateDag[2:2:end]))
+    excitedStateDag = ApplyOperator([probeDag], groundState)
 
     # create array of frequency points and spectral function
     specFuncArray = 0 .* freqArray
 
     # loop over eigenstates of the excited symmetry sectors,
     # calculated overlaps and multiply the appropriate denominators.
-    for (i, stateDict) in collect(enumerate(eigVecs[1][excitedSector]))
-        for key in intersect(keys(excitedState), keys(stateDict))
-            overlap = abs(stateDict[key] * excitedState[key])^2
-            specFuncArray .+= overlap * broadening ./ ((freqArray .+ energyGs .- eigVals[1][excitedSector][i]) .^ 2 .+ broadening^2)
-        end
-    end
-    for (i, stateDict) in collect(enumerate(eigVecs[2][excitedSectorDag]))
-        for key in intersect(keys(excitedStateDag), keys(stateDict))
-            overlapDag = abs(stateDict[key] * excitedStateDag[key])^2
-            specFuncArray .+= overlapDag * broadening ./ ((freqArray .- energyGs .+ eigVals[2][excitedSectorDag][i]) .^ 2 .+ broadening^2)
-        end
+    for (eigvl, stateDict) in zip(eigVals, eigVecs)
+        particleWeight = StateOverlap(stateDict, excitedState)^2
+        holeWeight = StateOverlap(stateDict, excitedStateDag)^2
+        specFuncArray .+= particleWeight * broadening ./ ((freqArray .- energyGs .+ eigvl) .^ 2 .+ broadening^2)
+        specFuncArray .+= holeWeight * broadening ./ ((freqArray .+ energyGs .- eigvl) .^ 2 .+ broadening^2)
     end
     specFuncArray ./= sum(specFuncArray) * abs(freqArray[2] - freqArray[1])
     return specFuncArray
