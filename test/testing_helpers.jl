@@ -131,6 +131,6 @@ function kondoOperatorsTest(momIndices::NTuple{2,Integer}, multiplier::Float64)
 end
 
 
-function stateExpFunc1Ck(state::Dict{BitVector,Float64})
+function stateExpFunc1Ck(state::Dict{BitVector,Float64}, sectors::String)
     return Dict{keytype(state),valtype(state)}([key; [1, 1, 0, 0]] => val for (key, val) in state)
 end

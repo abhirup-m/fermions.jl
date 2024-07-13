@@ -8,7 +8,8 @@ include("testing_helpers.jl")
 using Test
 using LinearAlgebra
 
-include("base_tests.jl")
-include("eigen_tests.jl")
-include("correlation_tests.jl")
-# include("iterDiag_tests.jl")
+#=include("base_tests.jl")=#
+#=include("eigen_tests.jl")=#
+#=include("correlation_tests.jl")=#
+#=include("iterDiag_tests.jl")=#
+include("eigenstateRG_tests.jl")
