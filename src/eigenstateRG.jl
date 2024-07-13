@@ -7,7 +7,7 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
 
     pbar = Progress(numSteps; dt=0.1)
     for alpha in alphaValues[1:numSteps]
-        newState = stateExpansionFunction(stateFlowArray[end])
+        newState = stateExpansionFunction(stateFlowArray[end], sectors)
         unitaryOperatorList = unitaryOperatorFunction(alpha, numEntangled, sectors)
         numEntangled = div(length(collect(keys(newState))[1]), 2)
         stateRenormalisation = fetch.([Threads.@spawn ApplyOperator([operator], newState) for operator in unitaryOperatorList])
