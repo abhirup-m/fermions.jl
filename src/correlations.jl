@@ -58,9 +58,7 @@ end
 
 function vnEntropy(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[], tolerance=1e-10)
     reducedDMatrix = reducedDM(groundState, reducingIndices; reducingConfigs=reducingConfigs)
-
-    eigenvalues = eigvals(reducedDMatrix)
-
+    eigenvalues = eigvals(0.5 * (reducedDMatrix + reducedDMatrix'))
     eigenvalues[eigenvalues.<tolerance] .= 0
     eigenvalues ./= sum(eigenvalues)
     @assert all(x -> x ≥ 0, eigenvalues)
