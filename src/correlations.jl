@@ -56,14 +56,19 @@ function reducedDM(groundState::Dict{BitVector,Float64}, reducingIndices::Vector
 end
 
 
-function vnEntropy(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[], tolerance=1e-10)
+function vnEntropy(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[], tolerance=1e-10, schmidtGap=false)
     reducedDMatrix = reducedDM(groundState, reducingIndices; reducingConfigs=reducingConfigs)
     eigenvalues = eigvals(0.5 * (reducedDMatrix + reducedDMatrix'))
     eigenvalues[eigenvalues.<tolerance] .= 0
     eigenvalues ./= sum(eigenvalues)
     @assert all(x -> x ≥ 0, eigenvalues)
     @assert isapprox(sum(eigenvalues), 1; atol=tolerance)
-    return -sum(eigenvalues .* log.(replace(eigenvalues, 0 => 1e-10)))
+    if !schmidtGap
+        return -sum(eigenvalues .* log.(replace(eigenvalues, 0 => 1e-10)))
+    else
+        largestEigvals = sort(eigenvalues)
+        return -sum(eigenvalues .* log.(replace(eigenvalues, 0 => 1e-10))), largestEigvals[end] - largestEigvals[end-1]
+    end
 end
 
 
@@ -112,4 +117,26 @@ function SpecFunc(
     end
     specFuncArray ./= sum(specFuncArray) * abs(freqArray[2] - freqArray[1])
     return specFuncArray
+end
+
+
+function tripartiteInfo(
+    groundState::Dict{BitVector,Float64},
+    reducingIndices::NTuple{3,Vector{Int64}};
+    reducingConfigs::NTuple{3,Vector{BitVector}}=(BitVector[], BitVector[], BitVector[])
+)
+    BC_indices = vcat(reducingIndices[2], reducingIndices[3])
+    BC_configs = vcat(reducingConfigs[2], reducingConfigs[3])
+    I2_A_B = mutInfo(groundState, reducingIndices[[1, 2]]; reducingConfigs=reducingConfigs[[1, 2]])
+    I2_A_C = mutInfo(groundState, reducingIndices[[1, 3]]; reducingConfigs=reducingConfigs[[1, 3]])
+    I2_A_BC = mutInfo(groundState, (reducingIndices[1], BC_indices); reducingConfigs=(reducingConfigs[1], BC_configs))
+    return I2_A_B + I2_A_C - I2_A_BC
+end
+
+
+function schmidtGap(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[], tolerance=1e-10)
+    reducedDMatrix = reducedDM(groundState, reducingIndices; reducingConfigs=reducingConfigs)
+    eigenvalues = eigvals(0.5 * (reducedDMatrix + reducedDMatrix'))
+    largestEigvals = sort(eigenvalues)
+    return largestEigvals[end] - largestEigvals[end-1]
 end
