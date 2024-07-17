@@ -132,11 +132,3 @@ function tripartiteInfo(
     I2_A_BC = mutInfo(groundState, (reducingIndices[1], BC_indices); reducingConfigs=(reducingConfigs[1], BC_configs))
     return I2_A_B + I2_A_C - I2_A_BC
 end
-
-
-function schmidtGap(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[], tolerance=1e-10)
-    reducedDMatrix = reducedDM(groundState, reducingIndices; reducingConfigs=reducingConfigs)
-    eigenvalues = eigvals(0.5 * (reducedDMatrix + reducedDMatrix'))
-    largestEigvals = sort(eigenvalues)
-    return largestEigvals[end] - largestEigvals[end-1]
-end
