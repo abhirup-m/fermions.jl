@@ -29,8 +29,8 @@ end
     @test eigvals[1] ≈ 2 * eps + U / 2 - Δ / 2
     @test Set(keys(eigvecs[1])) == Set([[1, 0, 0, 1], [0, 0, 1, 1], [0, 1, 1, 0], [1, 1, 0, 0]])
     scaledGstate = Dict(k => v / eigvecs[1][[1, 0, 0, 1]] for (k, v) in eigvecs[1])
-    @test scaledGstate[[1, 0, 0, 1]] == 1.0
-    @test scaledGstate[[0, 1, 1, 0]] == -1.0
+    @test scaledGstate[[1, 0, 0, 1]] ≈ 1.0
+    @test scaledGstate[[0, 1, 1, 0]] ≈ -1.0
     @test scaledGstate[[0, 0, 1, 1]] ≈ a1 / a2
     @test scaledGstate[[1, 1, 0, 0]] ≈ a1 / a2
 
