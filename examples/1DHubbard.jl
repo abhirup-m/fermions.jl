@@ -43,7 +43,7 @@ end
 
 function main(numSteps, U)
     t = 1.0
-    initBasis = BasisStates(4)#; occCriteria=x -> x ∈ [1, 2, 3], magzCriteria = x -> x ∈ [-1, 0, 1])#; magzCriteria=magzCriteria, occCriteria=occCriteria)
+    initBasis = BasisStates(4; totOccCriteria=(x, N) -> div(N, 2) - 1 ≤ sum(x) ≤ div(N, 2) + 1, magzCriteria=x -> -2 ≤ sum(x[1:2:end] - x[2:2:end]) ≤ 2)
     retainSize = 50
     hamiltonianFamily = [dimerHamiltonian(U, t)]
     numStatesFamily = Int64[2]
@@ -53,14 +53,16 @@ function main(numSteps, U)
         push!(numStatesFamily, 2 + i)
     end
 
-    @time IterDiag(
+    spectrumFlow = IterDiag(
         hamiltonianFamily,
         initBasis,
         numStatesFamily,
         retainSize;
-        #occCriteria= (x,y) -> x ∈ [y-1, y, y+1], magzCriteria = x -> x ∈ [-1, 0, 1]
+        totOccCriteria=(o, N) -> N - 1 ≤ o ≤ N + 1,
+        magzCriteria=m -> -2 ≤ m ≤ 2
     )
-    return
+    return spectrumFlow
 end
 
-@btime main(7, 0.0);
+@time spectrumFlow = main(8, 0.0);
+display(keys(spectrumFlow[end]))

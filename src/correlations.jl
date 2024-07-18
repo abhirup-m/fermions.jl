@@ -20,38 +20,51 @@ accepts an optional argument `reducingConfigs` that specifies a subset of states
 """
 function reducedDM(groundState::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
 
+    # indices of the degrees of freedom that will not be summed over.
+    nonReducingIndices = setdiff(1:length(collect(keys(groundState))[1]), reducingIndices)
+
     # get all the configurations of the subsystem A in order to perform the partial trace.
     if length(reducingConfigs) == 0
         reducingConfigs = [collect(config) for config in Iterators.product(fill([1, 0], length(reducingIndices))...)]
     end
+    reducingConfigsMaps = Dict(config => i for (i, config) in enumerate(reducingConfigs))
 
-    # indices of the degrees of freedom that will not be summed over.
-    nonReducingIndices = setdiff(1:length(collect(keys(groundState))[1]), reducingIndices)
-    reducingCoeffs = Dict{BitVector,Dict{BitVector,Float64}}(BitVector(config) => Dict()
-                                                             for config in reducingConfigs)
+    # reducingCoeffs = Dict{BitVector,Dict{BitVector,Float64}}(BitVector(config) => Dict()
+    # for config in reducingConfigs)
+    #
+    reducingCoeffs = Dict{BitVector,Vector{Float64}}()
+    reducingIndexSets = Dict{BitVector,Vector{Int64}}()
+    reducedDMatrix = zeros(length(reducingConfigs), length(reducingConfigs))
 
     # |ψ⟩ can be written as ∑ c_{im} |i>|m>, where i is a state in the subspace A,
     # while m is a state in the subspace A-complement.
-    for (state, coeff) in groundState
+    for (psi_im, c_im) in groundState
 
         # get |i>
-        reducingConfig = state[reducingIndices]
+        psi_i = psi_im[reducingIndices]
+        index_i = reducingConfigsMaps[psi_i]
 
         # get |m>
-        nonReducingConfig = state[nonReducingIndices]
-        if reducingConfig ∉ reducingConfigs
+        psi_m = psi_im[nonReducingIndices]
+
+        if psi_i ∉ reducingConfigs
             continue
         end
 
-        # store c_im by classifying according to i and m
-        reducingCoeffs[reducingConfig][nonReducingConfig] = coeff
+        if psi_m ∉ keys(reducingCoeffs)
+            reducingCoeffs[psi_m] = [c_im]
+            reducingIndexSets[psi_m] = [index_i]
+        else
+            reducedDMatrix[index_i, reducingIndexSets[psi_m]] .+= c_im .* reducingCoeffs[psi_m]
+            reducedDMatrix[reducingIndexSets[psi_m], index_i] .+= c_im .* reducingCoeffs[psi_m]
+            push!(reducingCoeffs[psi_m], c_im)
+            push!(reducingIndexSets[psi_m], reducingConfigsMaps[psi_i])
+        end
+        reducedDMatrix[index_i, index_i] += c_im^2
+
+
     end
 
-    reducedDMatrix = zeros(length(reducingConfigs), length(reducingConfigs))
-    Threads.@threads for ((i1, c1), (i2, c2)) in collect(Iterators.product(enumerate(reducingConfigs), enumerate(reducingConfigs)))
-        commonKeys = intersect(keys(reducingCoeffs[collect(c1)]), keys(reducingCoeffs[collect(c2)]))
-        reducedDMatrix[i1, i2] = sum([reducingCoeffs[collect(c1)][key] * reducingCoeffs[collect(c2)][key] for key in commonKeys])
-    end
     return reducedDMatrix
 end
 
@@ -78,10 +91,10 @@ function mutInfo(
     reducingConfigs::Tuple{Vector{BitVector},Vector{BitVector}}=(BitVector[], BitVector[])
 )
     combinedConfigs = vec([[c1; c2] for (c1, c2) in Iterators.product(reducingConfigs...)])
-    SEE_A = vnEntropy(groundState, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
-    SEE_B = vnEntropy(groundState, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
-    SEE_AB = vnEntropy(groundState, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
-    return SEE_A + SEE_B - SEE_AB
+    SEE_A = Threads.@spawn vnEntropy(groundState, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
+    SEE_B = Threads.@spawn vnEntropy(groundState, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
+    SEE_AB = Threads.@spawn vnEntropy(groundState, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
+    return sum([1, 1, -1] .* fetch.([SEE_A, SEE_B, SEE_AB]))
 end
 
 
@@ -127,8 +140,8 @@ function tripartiteInfo(
 )
     BC_indices = vcat(reducingIndices[2], reducingIndices[3])
     BC_configs = vcat(reducingConfigs[2], reducingConfigs[3])
-    I2_A_B = mutInfo(groundState, reducingIndices[[1, 2]]; reducingConfigs=reducingConfigs[[1, 2]])
-    I2_A_C = mutInfo(groundState, reducingIndices[[1, 3]]; reducingConfigs=reducingConfigs[[1, 3]])
-    I2_A_BC = mutInfo(groundState, (reducingIndices[1], BC_indices); reducingConfigs=(reducingConfigs[1], BC_configs))
-    return I2_A_B + I2_A_C - I2_A_BC
+    I2_A_B = Threads.@spawn mutInfo(groundState, reducingIndices[[1, 2]]; reducingConfigs=reducingConfigs[[1, 2]])
+    I2_A_C = Threads.@spawn mutInfo(groundState, reducingIndices[[1, 3]]; reducingConfigs=reducingConfigs[[1, 3]])
+    I2_A_BC = Threads.@spawn mutInfo(groundState, (reducingIndices[1], BC_indices); reducingConfigs=(reducingConfigs[1], BC_configs))
+    return sum([1, 1, -1] .* fetch.([I2_A_B, I2_A_C, I2_A_BC]))
 end

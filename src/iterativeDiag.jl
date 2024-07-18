@@ -6,6 +6,8 @@ function ExpandBasis(
     sector::Tuple{Int64,Int64},
     eigvals::Vector{Float64},
     numNew::Int64;
+    totOccCriteria::Function=o -> true,
+    magzCriteria::Function=m -> true,
     newClassifiedBasis::Dict{Tuple{Int64,Int64},Vector{Dict{BitVector,Float64}}}=Dict{Tuple{Int64,Int64},Vector{Dict{BitVector,Float64}}}(),
     newDiagElementsClassified::Dict{Tuple{Int64,Int64},Vector{Float64}}=Dict{Tuple{Int64,Int64},Vector{Float64}}(),
 )
@@ -14,6 +16,9 @@ function ExpandBasis(
     for newComb in collect(Iterators.product(repeat([[0, 1]], 2 * numNew)...))
         newSector = sector .+ (sum(newComb),
             sum(newComb[1:2:end]) - sum(newComb[2:2:end]))
+        if !(totOccCriteria(newSector[1]) && magzCriteria(newSector[2]))
+            continue
+        end
         if newSector ∉ keys(newClassifiedBasis)
             newClassifiedBasis[newSector] = []
             newDiagElementsClassified[newSector] = []
@@ -72,7 +77,8 @@ function IterDiag(
     basisStates::Vector{Dict{BitVector,Float64}},
     numSitesFlow::Vector{Int64},
     retainSize::Int64;
-    occupSectors::Function=(x, N) -> true
+    totOccCriteria::Function=(o, N) -> true,
+    magzCriteria::Function=m -> true,
 )
     @assert length(numSitesFlow) == length(hamFlow)
 
@@ -93,8 +99,9 @@ function IterDiag(
         end
         for sector in keys(classifiedBasis)
             newClassifiedBasis, newDiagElementsClassified = ExpandBasis(spectrumFlow[end][sector][2], sector,
-                spectrumFlow[end][sector][1], numDiffFlow[i];
-                newClassifiedBasis=newClassifiedBasis, newDiagElementsClassified=newDiagElementsClassified)
+                spectrumFlow[end][sector][1], numDiffFlow[i]; totOccCriteria=o -> totOccCriteria(o, numSitesFlow[i+1]),
+                magzCriteria=magzCriteria, newClassifiedBasis=newClassifiedBasis,
+                newDiagElementsClassified=newDiagElementsClassified)
         end
 
         if i == length(hamFlow)
