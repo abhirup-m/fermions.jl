@@ -158,3 +158,49 @@ end
     @test Set(keys(scaledTotalFinal)) == Set(keys(scaledConcoctedFinal))
     @test all(key -> scaledTotalFinal[key] ≈ scaledConcoctedFinal[key], keys(scaledTotalFinal))
 end
+
+@testset "Eigenstate RG 2CK N=1 ph" begin
+    initState = Dict(
+        BitVector([1, 0, 0, 1, 1, 0]) => 1.0,
+        BitVector([0, 1, 0, 1, 1, 0]) => -1.0,
+    )
+    refState = [1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0]
+    numSteps = 1
+    alphaValues = ones(numSteps)
+    sectors = "ph"
+    stateFlow = getWavefunctionRG(initState, alphaValues, numSteps, unitaries2CK, stateExpansion2CK, sectors)
+    @test stateFlow[1] == initState
+    scaledState = Dict(k => v / stateFlow[2][refState] for (k, v) in stateFlow[2])
+
+    @test Set(keys(scaledState)) == Set([
+        [1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0],
+        [1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+        [1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+        [0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0],
+        [1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+        [1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0],
+        [0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0],
+        [1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0],
+        [0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0],
+        [0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0],
+        [1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1],
+        [0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+        [0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0],
+        [0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+    ])
+
+    @test scaledState[[1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0]] == -0.5
+    @test scaledState[[1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0]] == 1.0
+    @test scaledState[[1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0]] == 0.25
+    @test scaledState[[0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0]] == -0.5
+    @test scaledState[[1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0]] == 0.25
+    @test scaledState[[1, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0]] == 0.25
+    @test scaledState[[0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0]] == -0.5
+    @test scaledState[[1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0]] == 0.25
+    @test scaledState[[0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 0]] == 0.25
+    @test scaledState[[0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0]] == 0.25
+    @test scaledState[[1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0, 1]] == -0.5
+    @test scaledState[[0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0]] == -1.0
+    @test scaledState[[0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0]] == 0.25
+    @test scaledState[[0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0]] == 0.25
+end
