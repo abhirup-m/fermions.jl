@@ -22,21 +22,40 @@ function unitaries2CK(alpha::Float64, num_entangled::Integer, sectors::String)
 
     @assert sectors ∈ ("p", "h", "ph")
     @assert (num_entangled - 1) % 2 == 0
-    leftChannel = 2:2:num_entangled
-    rightChannel = 3:2:num_entangled
-    leftIOM = 2 * num_entangled + 1
-    rightIOM = 2 * num_entangled + 1 + 2 * length(sectors)
+
+    # all odd sites are the left channel sites.
+    # the total number of channel sites is num_entangled-1,
+    # -1 being the impurity site
+    leftChannel = 1:2:(num_entangled-1)
+
+    # all even sites are the right channel sites
+    rightChannel = 2:2:(num_entangled-1)
+
+    # first left channel IOM is inserted at num_entangled + 1, 
+    # num_entangled being the total number of sites prior to insertion
+    # and hence also the index of the last site before insertion.
+    leftIOM = num_entangled + 1
+
+    # first right channel IOM site is inserted just after the first
+    # left channel IOM site.
+    rightIOM = leftIOM + 1
     unitaryTerms = []
     if 'p' in sectors
-        leftPTerms = vcat([kondoOperators((2 * i - 1, leftIOM), alpha) for i in leftChannel]...)
-        rightPTerms = vcat([kondoOperators((2 * i - 1, rightIOM), alpha) for i in rightChannel]...)
+        leftPTerms = vcat([kondoOperators((2 * i + 1, 2 * leftIOM + 1), alpha) for i in leftChannel]...)
+        rightPTerms = vcat([kondoOperators((2 * i + 1, 2 * rightIOM + 1), alpha) for i in rightChannel]...)
         unitaryTerms = [unitaryTerms; leftPTerms; rightPTerms]
+
+        # next left IOM will be two sites away from the previous leftIOM,
+        # because there's also a right IOM site in between
         leftIOM += 2
+
+        # next right IOM site is also two sites away, because the second
+        # right IOM has now been inserted between them.
         rightIOM += 2
     end
     if 'h' in sectors
-        leftHTerms = vcat([kondoOperators((leftIOM, 2 * i - 1), alpha) for i in leftChannel]...)
-        rightHTerms = vcat([kondoOperators((rightIOM, 2 * i - 1), alpha) for i in rightChannel]...)
+        leftHTerms = vcat([kondoOperators((2 * leftIOM + 1, 2 * i + 1), alpha) for i in leftChannel]...)
+        rightHTerms = vcat([kondoOperators((2 * rightIOM + 1, 2 * i + 1), alpha) for i in rightChannel]...)
         unitaryTerms = [unitaryTerms; leftHTerms; rightHTerms]
     end
     return unitaryTerms

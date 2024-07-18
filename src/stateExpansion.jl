@@ -5,7 +5,7 @@ function stateExpansion2CK(state::Dict{BitVector,Float64}, sectors::String)
     elseif sectors == "h"
         state = Dict{keytype(state),valtype(state)}([key; [0, 0, 0, 0]] => val for (key, val) in state)
     else
-        state = Dict{keytype(state),valtype(state)}([key; [1, 1, 0, 0, 1, 1, 0, 0]] => val for (key, val) in state)
+        state = Dict{keytype(state),valtype(state)}([key; [1, 1, 1, 1, 0, 0, 0, 0]] => val for (key, val) in state)
     end
 end
 
