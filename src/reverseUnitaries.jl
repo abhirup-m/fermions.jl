@@ -34,7 +34,7 @@ function unitaries2CK(alpha::Float64, num_entangled::Integer, sectors::String)
     # first left channel IOM is inserted at num_entangled + 1, 
     # num_entangled being the total number of sites prior to insertion
     # and hence also the index of the last site before insertion.
-    leftIOM = num_entangled + 1
+    leftIOM = num_entangled
 
     # first right channel IOM site is inserted just after the first
     # left channel IOM site.
