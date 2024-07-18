@@ -84,8 +84,8 @@ end
 function OperatorMatrix(basisStates::Vector{Dict{BitVector,Float64}}, operator::Vector{Tuple{String,Vector{Int64},Float64}})
     operatorMatrix = zeros(length(basisStates), length(basisStates))
 
-    for (incomingIndex, incomingState) in enumerate(basisStates)
-        newState = ApplyOperator(operator, incomingState)
+    Threads.@threads for incomingIndex in eachindex(basisStates)
+        newState = ApplyOperator(operator, basisStates[incomingIndex])
 
         for (outgoingIndex, outgoingState) in enumerate(basisStates)
             overlap = 0
