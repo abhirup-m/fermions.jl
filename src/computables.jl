@@ -149,7 +149,5 @@ function tripInfoOut(leftStates2CKExpanded::Vector{Vector{Int64}}, rightStates2C
                          for (j, state) in enumerate(stateFlow2CK)]
     tripInfo_kout_2CKSI = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], leftStates2CKExpanded[j][end-2*i+1:end-2*i+2], rightStates2CKExpanded[j][end-2*k+1:end-2*k+2])) for i in 1:statesPerChannel for k in 1:statesPerChannel]))
                            for (j, state) in enumerate(stateFlow2CKSI)]
-    # tripInfo_kout_2CK = [fermions.tripartiteInfo(state, ([1, 2], leftStates2CKExpanded[j][end-1:end], rightStates2CKExpanded[j][end-1:end])) for (j, state) in enumerate(stateFlow2CK)]
-    # tripInfo_kout_2CKSI = [fermions.tripartiteInfo(state, ([1, 2], leftStates2CKExpanded[j][end-1:end], rightStates2CKExpanded[j][end-1:end])) for (j, state) in enumerate(stateFlow2CKSI)]
     return tripInfo_kout_2CK, tripInfo_kout_2CKSI
 end

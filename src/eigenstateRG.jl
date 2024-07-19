@@ -12,7 +12,7 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
         stateRenormalisation = fetch.([Threads.@spawn ApplyOperator([operator], newState) for operator in unitaryOperatorList])
         mergewith!(+, newState, stateRenormalisation...)
 
-        keepIndices = abs.(values(newState)) .> tolerance
+        keepIndices = abs.(values(newState)) ./ maximum(abs.(values(newState))) .> tolerance
         newState = Dict(collect(keys(newState))[keepIndices] .=> collect(values(newState))[keepIndices])
         total_norm = sum(values(newState) .^ 2)^0.5
         newState = Dict(keys(newState) .=> values(newState) ./ total_norm)
