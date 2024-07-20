@@ -135,19 +135,47 @@ function mutInfoOutLR(leftStates2CKExpanded::Vector{Vector{Int64}}, rightStates2
 end
 
 
-function tripInfoIn(leftStates2CKExpanded::Vector{Vector{Int64}}, rightStates2CKExpanded::Vector{Vector{Int64}}, statesPerChannel::Int64, stateFlow2CK::Vector{Dict{BitVector,Float64}}, stateFlow2CKSI::Vector{Dict{BitVector,Float64}})
-    tripInfo_kin_2CK = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], leftStates2CKExpanded[1][2*i-1:2*i], rightStates2CKExpanded[1][2*k-1:2*k])) for i in 1:statesPerChannel for k in 1:statesPerChannel]))
-                        for (_, state) in enumerate(stateFlow2CK)]
-    tripInfo_kin_2CKSI = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], leftStates2CKExpanded[1][2*i-1:2*i], rightStates2CKExpanded[1][2*k-1:2*k])) for i in 1:statesPerChannel for k in 1:statesPerChannel]))
-                          for (_, state) in enumerate(stateFlow2CKSI)]
-    return tripInfo_kin_2CK, tripInfo_kin_2CKSI
+function tripInfoMax(states2CK_A::Vector{Vector{Int64}}, states2CK_B::Vector{Vector{Int64}}, states1CK_A::Vector{Vector{Int64}}, states1CK_B::Vector{Vector{Int64}}, statesPerChannel::Int64, stateFlow2CK::Vector{Dict{BitVector,Float64}}, stateFlow2CKSI::Vector{Dict{BitVector,Float64}}, stateFlow1CK::Vector{Dict{BitVector,Float64}})
+    tripInfo_2CK = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], states2CK_A[j][2*i-1:2*i], states2CK_B[j][2*k-1:2*k])) for i in 1:statesPerChannel for k in 1:statesPerChannel]))
+                    for (j, state) in enumerate(stateFlow2CK)]
+    tripInfo_2CKSI = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], states2CK_A[j][2*i-1:2*i], states2CK_B[j][2*k-1:2*k])) for i in 1:statesPerChannel for k in 1:statesPerChannel]))
+                      for (j, state) in enumerate(stateFlow2CKSI)]
+    tripInfo_1CK = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], states1CK_A[j][2*i-1:2*i], states1CK_B[j][2*k-1:2*k])) for i in 1:statesPerChannel for k in 1:statesPerChannel if i ≠ k]))
+                    for (j, state) in enumerate(stateFlow1CK)]
+    return tripInfo_2CK, tripInfo_2CKSI, tripInfo_1CK
 end
 
 
-function tripInfoOut(leftStates2CKExpanded::Vector{Vector{Int64}}, rightStates2CKExpanded::Vector{Vector{Int64}}, statesPerChannel::Int64, stateFlow2CK::Vector{Dict{BitVector,Float64}}, stateFlow2CKSI::Vector{Dict{BitVector,Float64}})
-    tripInfo_kout_2CK = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], leftStates2CKExpanded[j][end-2*i+1:end-2*i+2], rightStates2CKExpanded[j][end-2*k+1:end-2*k+2])) for i in 1:statesPerChannel for k in 1:statesPerChannel]))
+function tripInfoBlock(states2CK_A::Vector{Vector{Int64}}, states2CK_B::Vector{Vector{Int64}}, states1CK_A::Vector{Vector{Int64}}, states1CK_B::Vector{Vector{Int64}}, stateFlow2CK::Vector{Dict{BitVector,Float64}}, stateFlow2CKSI::Vector{Dict{BitVector,Float64}}, stateFlow1CK::Vector{Dict{BitVector,Float64}})
+    tripInfo_2CK = [fermions.tripartiteInfo(state, ([1, 2], states2CK_A[j], states2CK_B[j]))
+                    for (j, state) in enumerate(stateFlow2CK)]
+    tripInfo_2CKSI = [fermions.tripartiteInfo(state, ([1, 2], states2CK_A[j], states2CK_B[j]))
+                      for (j, state) in enumerate(stateFlow2CKSI)]
+    tripInfo_1CK = [fermions.tripartiteInfo(state, ([1, 2], states1CK_A[j], states1CK_B[j]))
+                    for (j, state) in enumerate(stateFlow1CK)]
+    return tripInfo_2CK, tripInfo_2CKSI, tripInfo_1CK
+end
+
+
+
+
+function tripInfoOut(statesExpanded1::Vector{Vector{Int64}}, statesExpanded2::Vector{Vector{Int64}}, states1CKExpanded::Vector{Vector{Int64}}, statesPerChannel::Int64, stateFlow2CK::Vector{Dict{BitVector,Float64}}, stateFlow2CKSI::Vector{Dict{BitVector,Float64}}, stateFlow1CK::Vector{Dict{BitVector,Float64}})
+    tripInfo_kout_2CK = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], statesExpanded1[j][end-2*i+1:end-2*i+2], statesExpanded2[j][end-2*k+1:end-2*k+2])) for i in 1:statesPerChannel for k in 1:statesPerChannel if i ≠ k || statesExpanded1[j] ≠ statesExpanded2[j]]))
                          for (j, state) in enumerate(stateFlow2CK)]
-    tripInfo_kout_2CKSI = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], leftStates2CKExpanded[j][end-2*i+1:end-2*i+2], rightStates2CKExpanded[j][end-2*k+1:end-2*k+2])) for i in 1:statesPerChannel for k in 1:statesPerChannel]))
+    tripInfo_kout_2CKSI = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], statesExpanded1[j][end-2*i+1:end-2*i+2], statesExpanded2[j][end-2*k+1:end-2*k+2])) for i in 1:statesPerChannel for k in 1:statesPerChannel]))
                            for (j, state) in enumerate(stateFlow2CKSI)]
-    return tripInfo_kout_2CK, tripInfo_kout_2CKSI
+    tripInfo_kout_1CK = [minimum(fetch.([Threads.@spawn fermions.tripartiteInfo(state, ([1, 2], states1CKExpanded[j][end-2*i+1:end-2*i+2], states1CKExpanded[j][end-2*k+1:end-2*k+2])) for i in 1:statesPerChannel for k in 1:statesPerChannel if i ≠ k]))
+                         for (j, state) in enumerate(stateFlow1CK)]
+    return tripInfo_kout_2CK, tripInfo_kout_2CKSI, tripInfo_kout_1CK
+end
+
+
+function tripInfoOutBlock(statesExpanded1::Vector{Vector{Int64}}, statesExpanded2::Vector{Vector{Int64}}, states1CKExpanded::Vector{Vector{Int64}}, statesPerChannel::Int64, stateFlow2CK::Vector{Dict{BitVector,Float64}}, stateFlow2CKSI::Vector{Dict{BitVector,Float64}}, stateFlow1CK::Vector{Dict{BitVector,Float64}})
+    tripInfo_kout_2CK = [fermions.tripartiteInfo(state, ([1, 2], statesExpanded1[j][end-2*statesPerChannel+1:end], statesExpanded2[j][end-2*statesPerChannel+1:end]))
+                         for (j, state) in enumerate(stateFlow2CK)]
+    tripInfo_kout_2CKSI = [fermions.tripartiteInfo(state, ([1, 2], statesExpanded1[j][end-2*statesPerChannel+1:end], statesExpanded2[j][end-2*statesPerChannel+1:end]))
+                           for (j, state) in enumerate(stateFlow2CKSI)]
+    tripInfo_kout_1CK = [fermions.tripartiteInfo(state, ([1, 2], states1CKExpanded[j][end-2*statesPerChannel+1:end], states1CKExpanded[j][end-2*statesPerChannel+1:end]))
+                         for (j, state) in enumerate(stateFlow1CK)]
+    return tripInfo_kout_2CK, tripInfo_kout_2CKSI, tripInfo_kout_1CK
 end
