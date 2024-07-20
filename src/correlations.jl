@@ -112,22 +112,31 @@ function SpecFunc(
 
     # calculate c_ν |GS>
     excitedState = ApplyOperator([probe], groundState)
+    exampleState = collect(keys(excitedState))[1]
+    excitedSector = (sum(exampleState), sum(exampleState[1:2:end] - exampleState[2:2:end]))
 
     # calculate c^†_ν |GS>
     excitedStateDag = ApplyOperator([probeDag], groundState)
+    exampleState = collect(keys(excitedStateDag))[1]
+    excitedSectorDag = (sum(exampleState), sum(exampleState[1:2:end] - exampleState[2:2:end]))
 
     # create array of frequency points and spectral function
-    specFuncArray = 0 .* freqArray
+    specFuncArray = [0 .* freqArray for _ in eigVals]
 
     # loop over eigenstates of the excited symmetry sectors,
     # calculated overlaps and multiply the appropriate denominators.
-    for (eigvl, stateDict) in zip(eigVals, eigVecs)
-        particleWeight = StateOverlap(stateDict, excitedState)^2
-        holeWeight = StateOverlap(stateDict, excitedStateDag)^2
-
-        specFuncArray .+= particleWeight * broadening ./ ((freqArray .- energyGs .+ eigvl) .^ 2 .+ broadening^2)
-        specFuncArray .+= holeWeight * broadening ./ ((freqArray .+ energyGs .- eigvl) .^ 2 .+ broadening^2)
+    Threads.@threads for i in eachindex(eigVals)
+        exampleState = collect(keys(eigVecs[i]))[1]
+        sector = (sum(exampleState), sum(exampleState[1:2:end] - exampleState[2:2:end]))
+        if sector == excitedSector
+            particleWeight = StateOverlap(eigVecs[i], excitedState)^2
+            specFuncArray[i] = particleWeight * broadening ./ ((freqArray .- energyGs .+ eigVals[i]) .^ 2 .+ broadening^2)
+        elseif sector == excitedSectorDag
+            holeWeight = StateOverlap(eigVecs[i], excitedStateDag)^2
+            specFuncArray[i] = holeWeight * broadening ./ ((freqArray .+ energyGs .- eigVals[i]) .^ 2 .+ broadening^2)
+        end
     end
+    specFuncArray = sum(specFuncArray)
     specFuncArray ./= sum(specFuncArray) * abs(freqArray[2] - freqArray[1])
     return specFuncArray
 end
