@@ -111,6 +111,7 @@ function SpecFunc(
     energyGs = eigVals[1]
 
     # calculate c_ν |GS>
+    #=display(sort([v for (k, v) in groundState if k[1] == 1], rev=true))=#
     excitedState = ApplyOperator([probe], groundState)
     exampleState = collect(keys(excitedState))[1]
     excitedSector = (sum(exampleState), sum(exampleState[1:2:end] - exampleState[2:2:end]))
@@ -137,7 +138,7 @@ function SpecFunc(
         end
     end
     specFuncArray = sum(specFuncArray)
-    specFuncArray ./= sum(specFuncArray) * abs(freqArray[2] - freqArray[1])
+    #=specFuncArray ./= sum(specFuncArray) * abs(freqArray[2] - freqArray[1])=#
     return specFuncArray
 end
 

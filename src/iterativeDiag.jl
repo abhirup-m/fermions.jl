@@ -90,7 +90,7 @@ function IterDiag(
     numDiffFlow = [n2 - n1 for (n1, n2) in zip(numSitesFlow[1:end-1], numSitesFlow[2:end])]
     spectrumFlow = []
 
-    for (i, hamiltonian) in enumerate(hamFlow)
+    @showprogress for (i, hamiltonian) in enumerate(hamFlow)
         push!(spectrumFlow, [])
         newClassifiedBasis = typeof(classifiedBasis)()
         newDiagElementsClassified = Dict{keytype(classifiedBasis),Vector{Float64}}()
