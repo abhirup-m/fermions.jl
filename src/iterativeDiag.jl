@@ -5,6 +5,7 @@ function ExpandBasis(
     basis::Vector{Dict{BitVector,Float64}},
     sector::Tuple{Int64,Int64},
     eigvals::Vector{Float64},
+    retainSize::Int64,
     numNew::Int64;
     totOccCriteria::Function=o -> true,
     magzCriteria::Function=m -> true,
@@ -28,8 +29,9 @@ function ExpandBasis(
     Threads.@threads for (newComb, newSector) in newPairs
         append!(newDiagElementsClassified[newSector], eigvals)
         for stateDict in basis
-            newKeys = [vcat(key, collect(newComb)) for key in keys(stateDict)]
-            push!(newClassifiedBasis[newSector], Dict(newKeys .=> values(stateDict)))
+            minVal = abs(sort(collect(values(stateDict)), rev=true)[minimum((retainSize, length(stateDict)))])
+            newKeyValPairs = [(vcat(key, collect(newComb)), val) for (key, val) in stateDict if abs(val) >= minVal]
+            push!(newClassifiedBasis[newSector], Dict(newKeyValPairs))
         end
     end
     return newClassifiedBasis, newDiagElementsClassified
@@ -99,7 +101,7 @@ function IterDiag(
         end
         for sector in keys(classifiedBasis)
             newClassifiedBasis, newDiagElementsClassified = ExpandBasis(spectrumFlow[end][sector][2], sector,
-                spectrumFlow[end][sector][1], numDiffFlow[i]; totOccCriteria=o -> totOccCriteria(o, numSitesFlow[i+1]),
+                spectrumFlow[end][sector][1], retainSize, numDiffFlow[i]; totOccCriteria=o -> totOccCriteria(o, numSitesFlow[i+1]),
                 magzCriteria=magzCriteria, newClassifiedBasis=newClassifiedBasis,
                 newDiagElementsClassified=newDiagElementsClassified)
         end
