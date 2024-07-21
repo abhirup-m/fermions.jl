@@ -99,16 +99,16 @@ end
 
 
 function SpecFunc(
-    eigVals::Vector{Float64},
-    eigVecs::Vector{Dict{BitVector,Float64}},
+    groundSE::Tuple{Float64, Dict{BitVector,Float64}},
+    eigVals::Dict{Tuple{Int64, Int64}, Vector{Float64}},
+    eigVecs::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Float64}}},
     probe::Tuple{String,Vector{Int64},Float64},
     probeDag::Tuple{String,Vector{Int64},Float64},
     freqArray::Vector{Float64},
     broadening::Float64
 )
 
-    groundState = eigVecs[1]
-    energyGs = eigVals[1]
+    energyGs, groundState = groundSE
 
     # calculate c_ν |GS>
     #=display(sort([v for (k, v) in groundState if k[1] == 1], rev=true))=#
@@ -122,23 +122,22 @@ function SpecFunc(
     excitedSectorDag = (sum(exampleState), sum(exampleState[1:2:end] - exampleState[2:2:end]))
 
     # create array of frequency points and spectral function
-    specFuncArray = [0 .* freqArray for _ in eigVals]
+    specFuncArrayP = [0 .* freqArray for _ in eigVals[excitedSector]]
+    specFuncArrayH = [0 .* freqArray for _ in eigVals[excitedSectorDag]]
 
     # loop over eigenstates of the excited symmetry sectors,
     # calculated overlaps and multiply the appropriate denominators.
-    Threads.@threads for i in eachindex(eigVals)
-        exampleState = collect(keys(eigVecs[i]))[1]
-        sector = (sum(exampleState), sum(exampleState[1:2:end] - exampleState[2:2:end]))
-        if sector == excitedSector
-            particleWeight = StateOverlap(eigVecs[i], excitedState)^2
-            specFuncArray[i] = particleWeight * broadening ./ ((freqArray .- energyGs .+ eigVals[i]) .^ 2 .+ broadening^2)
-        elseif sector == excitedSectorDag
-            holeWeight = StateOverlap(eigVecs[i], excitedStateDag)^2
-            specFuncArray[i] = holeWeight * broadening ./ ((freqArray .+ energyGs .- eigVals[i]) .^ 2 .+ broadening^2)
+    @sync begin
+        @async Threads.@threads for index in eachindex(eigVals[excitedSector])
+            particleWeight = StateOverlap(eigVecs[excitedSector][index], excitedState)^2
+            specFuncArrayP[index] = particleWeight * broadening ./ ((freqArray .- energyGs .+ eigVals[excitedSector][index]) .^ 2 .+ broadening^2)
+        end
+        @async Threads.@threads for index in eachindex(eigVals[excitedSectorDag])
+            holeWeight = StateOverlap(eigVecs[excitedSectorDag][index], excitedStateDag)^2
+            specFuncArrayH[index] = holeWeight * broadening ./ ((freqArray .+ energyGs .- eigVals[excitedSectorDag][index]) .^ 2 .+ broadening^2)
         end
     end
-    specFuncArray = sum(specFuncArray)
-    #=specFuncArray ./= sum(specFuncArray) * abs(freqArray[2] - freqArray[1])=#
+    specFuncArray = sum(specFuncArrayP) .+ sum(specFuncArrayH)
     return specFuncArray
 end
 

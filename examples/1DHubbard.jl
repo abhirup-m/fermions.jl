@@ -1,5 +1,5 @@
 #### Iterative diagonalisation solution of the 1D Hubbard model ####
-using Plots, Measures, BenchmarkTools
+using Plots, Measures, Dates, ProgressMeter
 include("../src/base.jl")
 include("../src/correlations.jl")
 include("../src/eigen.jl")
@@ -41,10 +41,12 @@ function dimerAdditionalHamiltonian(U, t, index)
     return [hopping; correlation]
 end
 
+const t = 1.0
+const retainSizeY = 50
+const retainSizeX = 1e-2
+
 function main(numSteps, U)
-    t = 1.0
     initBasis = BasisStates(4; totOccCriteria=(x, N) -> div(N, 2) - 1 ≤ sum(x) ≤ div(N, 2) + 1, magzCriteria=x -> -2 ≤ sum(x[1:2:end] - x[2:2:end]) ≤ 2)
-    retainSize = 200
     hamiltonianFamily = [dimerHamiltonian(U, t)]
     numStatesFamily = Int64[2]
     for i in 1:numSteps
@@ -53,32 +55,28 @@ function main(numSteps, U)
         push!(numStatesFamily, 2 + i)
     end
 
-    spectrumFlow = IterDiag(
+    eigValData, eigVecData = IterDiag(
         hamiltonianFamily,
         initBasis,
         numStatesFamily,
-        retainSize;
+        retainSizeY,
+        retainSizeX;
+        showProgress=true,
         totOccCriteria=(o, N) -> N - 1 ≤ o ≤ N + 1,
         magzCriteria=m -> -2 ≤ m ≤ 2
     )
-
-    freqArray = collect(range(-10.0, stop=10.0, step=0.01))
-    specfunc = 0 .* freqArray
+    halfFillingSpectrum = [(E, X) for (E, X, numSites) in zip(eigValData, eigVecData, numStatesFamily)
+                           if (numSites, 0) ∈ keys(E)]
+    groundStateInfoAll = [(E[(numSites, 0)][1], X[(numSites, 0)][1]) for (E, X, numSites) in zip(eigValData, eigVecData, numStatesFamily)
+                           if (numSites, 0) ∈ keys(E)]
+    specfuncFlow, freqArray = IterSpecFunc(groundStateInfoAll, halfFillingSpectrum, (("-", [1], 1.0), ("+", [1], 1.0)), 5.5, 0.01)
     plots = []
-    for (numSites, spectrum) in zip(numStatesFamily, spectrumFlow)
-        probe, probeDag = (("-", [numSites], 1.0), ("+", [numSites], 1.0))
-        if (numSites, 0) ∉ keys(spectrum)
-            continue
-        end
-        eigVals = [spectrum[(numSites, 0)][1]; vcat([v[1] for (k,v) in spectrum if k ≠ (numSites, 0)]...)]
-        eigVecs = [spectrum[(numSites, 0)][2]; vcat([v[2] for (k,v) in spectrum if k ≠ (numSites, 0)]...)]
-        specfunc .+= SpecFunc(eigVals, eigVecs, probe, probeDag, freqArray, 1e-2)
-        push!(plots, plot(freqArray, specfunc))
+    for y in specfuncFlow
+        push!(plots, plot(freqArray, y))
     end
-    specfunc ./= sum(specfunc) * abs(freqArray[2] - freqArray[1])
-    return plots
+    p = plot(plots..., thickness_scaling=1.4, linewidth=2, layout=(length(plots), 1), leftmargin=4mm, size=(400, 300 * length(plots)), legend=false)
+    display(p)
+    #=savefig(p, "specfunc.pdf")=#
 end
 
-@time plots = main(10, 2.0);
-p = plot(plots..., thickness_scaling=1.4, linewidth=2, layout=(length(plots), 1), leftmargin=4mm, size=(400, 300 * length(plots)), legend=false)
-savefig(p, "specfunc.pdf")
+main(6, 2.0)

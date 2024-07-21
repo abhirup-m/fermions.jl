@@ -83,18 +83,10 @@ end
 
 function OperatorMatrix(basisStates::Vector{Dict{BitVector,Float64}}, operator::Vector{Tuple{String,Vector{Int64},Float64}})
     operatorMatrix = zeros(length(basisStates), length(basisStates))
-
-    Threads.@threads for incomingIndex in eachindex(basisStates)
-        newState = ApplyOperator(operator, basisStates[incomingIndex])
-
-        for (outgoingIndex, outgoingState) in enumerate(basisStates)
-            overlap = 0
-            for k in keys(newState)
-                if haskey(outgoingState, k)
-                    overlap += newState[k] * outgoingState[k]
-                end
-            end
-            operatorMatrix[outgoingIndex, incomingIndex] = overlap
+    newStates = fetch.([Threads.@spawn ApplyOperator(operator, incomingState) for incomingState in basisStates])
+    Threads.@threads for incomingIndex in eachindex(newStates)
+        Threads.@threads for outgoingIndex in eachindex(basisStates)
+            operatorMatrix[outgoingIndex, incomingIndex] = StateOverlap(basisStates[outgoingIndex], newStates[incomingIndex]) 
         end
     end
     return operatorMatrix
@@ -120,10 +112,11 @@ end
 
 
 function StateOverlap(state1::Dict{BitVector,Float64}, state2::Dict{BitVector,Float64})
-    commonKeys = intersect(keys(state1), keys(state2))
-    if isempty(commonKeys)
-        return 0
+    overlap = 0
+    Threads.@threads for (key, val) in collect(state1)
+        if key ∈ keys(state2)
+            overlap += val * state2[key]
+        end
     end
-    overlap = sum(fetch.([Threads.@spawn (k -> state1[k] * state2[k])(key) for key in commonKeys]))
     return overlap
 end

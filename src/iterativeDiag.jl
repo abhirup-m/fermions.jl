@@ -1,3 +1,5 @@
+using Serialization, Random
+
 """Expands the basis to accomodate new 1-particle states by tacking 
 product states on to existing states. For eg. |10> + |01> -> (|10> + |01>)⊗|1>.
 """
@@ -5,7 +7,7 @@ function ExpandBasis(
     basis::Vector{Dict{BitVector,Float64}},
     sector::Tuple{Int64,Int64},
     eigvals::Vector{Float64},
-    retainSize::Int64,
+    retainSize::Float64,
     numNew::Int64;
     totOccCriteria::Function=o -> true,
     magzCriteria::Function=m -> true,
@@ -29,8 +31,13 @@ function ExpandBasis(
     Threads.@threads for (newComb, newSector) in newPairs
         append!(newDiagElementsClassified[newSector], eigvals)
         for stateDict in basis
-            minVal = abs(sort(collect(values(stateDict)), rev=true)[minimum((retainSize, length(stateDict)))])
-            newKeyValPairs = [(vcat(key, collect(newComb)), val) for (key, val) in stateDict if abs(val) >= minVal]
+            maxVal = maximum(abs.(values(stateDict)))
+            retainSize = 1e-10
+            newKeyValPairs = [(vcat(key, collect(newComb)), val) for (key, val) in stateDict if abs(val)/maxVal >= retainSize]
+            while length(newKeyValPairs) > 1000 && retainSize < 1e-2
+                retainSize *= 2
+                newKeyValPairs = [(vcat(key, collect(newComb)), val) for (key, val) in stateDict if abs(val)/maxVal >= retainSize]
+            end
             push!(newClassifiedBasis[newSector], Dict(newKeyValPairs))
         end
     end
@@ -78,7 +85,9 @@ function IterDiag(
     hamFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
     basisStates::Vector{Dict{BitVector,Float64}},
     numSitesFlow::Vector{Int64},
-    retainSize::Int64;
+    retainSizeY::Int64,
+    retainSizeX::Float64;
+    showProgress::Bool=false,
     totOccCriteria::Function=(o, N) -> true,
     magzCriteria::Function=m -> true,
 )
@@ -88,20 +97,24 @@ function IterDiag(
     diagElementsClassified = Dict(k => zeros(length(v)) for (k, v) in classifiedBasis)
 
     numDiffFlow = [n2 - n1 for (n1, n2) in zip(numSitesFlow[1:end-1], numSitesFlow[2:end])]
-    spectrumFlow = []
+    eigValData = Dict{Tuple{Int64, Int64}, Vector{Float64}}[]
+    eigVecData = Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}[]
 
-    @showprogress for (i, hamiltonian) in enumerate(hamFlow)
-        push!(spectrumFlow, [])
-        newClassifiedBasis = typeof(classifiedBasis)()
-        newDiagElementsClassified = Dict{keytype(classifiedBasis),Vector{Float64}}()
-        spectrumFlow[end] = Dict(keys(classifiedBasis) .=> fetch.([Threads.@spawn Spectrum(hamiltonian, basis, diagElements=diagElementsClassified[sector])
-                                                                   for (sector, basis) in classifiedBasis]))
+    @showprogress enabled=showProgress for (i, hamiltonian) in enumerate(hamFlow)
+        push!(eigValData, Dict())
+        push!(eigVecData, Dict())
+        @sync for (sector, basis) in classifiedBasis
+            Threads.@spawn eigValData[end][sector], eigVecData[end][sector] = Spectrum(hamiltonian, basis, diagElements=diagElementsClassified[sector])
+        end
         if i == length(hamFlow)
             continue
         end
+
+        newClassifiedBasis = typeof(classifiedBasis)()
+        newDiagElementsClassified = Dict{keytype(classifiedBasis),Vector{Float64}}()
         for sector in keys(classifiedBasis)
-            newClassifiedBasis, newDiagElementsClassified = ExpandBasis(spectrumFlow[end][sector][2], sector,
-                spectrumFlow[end][sector][1], retainSize, numDiffFlow[i]; totOccCriteria=o -> totOccCriteria(o, numSitesFlow[i+1]),
+            newClassifiedBasis, newDiagElementsClassified = ExpandBasis(eigVecData[end][sector], sector,
+                eigValData[end][sector], retainSizeX, numDiffFlow[i]; totOccCriteria=o -> totOccCriteria(o, numSitesFlow[i+1]),
                 magzCriteria=magzCriteria, newClassifiedBasis=newClassifiedBasis,
                 newDiagElementsClassified=newDiagElementsClassified)
         end
@@ -109,7 +122,26 @@ function IterDiag(
         if i == length(hamFlow)
             continue
         end
-        classifiedBasis, diagElementsClassified = TruncateBasis(newClassifiedBasis, newDiagElementsClassified, retainSize)
+        classifiedBasis, diagElementsClassified = TruncateBasis(newClassifiedBasis, newDiagElementsClassified, retainSizeY)
     end
-    return spectrumFlow
+    dirStructure = joinpath("data")
+    mkpath(dirStructure)
+    savePathE = joinpath(dirStructure, string(now()) |> x->replace(x,":"=>"-","."=>"-")) * "-E"
+    savePathX = joinpath(dirStructure, string(now()) |> x->replace(x,":"=>"-","."=>"-")) * "-X"
+    serialize(savePathE, eigValData)
+    serialize(savePathX, eigVecData)
+    return eigValData, eigVecData
+end
+
+
+function IterSpecFunc(groundStateInfoAll, spectrumData, probes, maxOmega, deltaOmega)
+    probe, probeDag = probes
+    freqArray = collect(range(-maxOmega, stop=maxOmega, step=deltaOmega))
+    specfuncFlow = [0 .* freqArray for _ in spectrumData]
+
+    for (i, (groundStateInfo, (eigVals, eigVecs))) in enumerate(zip(groundStateInfoAll, spectrumData))
+        specfuncFlow[i] .+= SpecFunc(groundStateInfo, eigVals, eigVecs, probe, probeDag, freqArray, 1e-2)
+    end
+    specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
+    return specfuncFlow, freqArray
 end
