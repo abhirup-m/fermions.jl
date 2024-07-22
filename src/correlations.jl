@@ -100,6 +100,43 @@ end
 
 function SpecFunc(
     groundSE::Tuple{Float64, Dict{BitVector,Float64}},
+    eigVals::Vector{Float64},
+    eigVecs::Vector{Dict{BitVector,Float64}},
+    probe::Tuple{String,Vector{Int64},Float64},
+    probeDag::Tuple{String,Vector{Int64},Float64},
+    freqArray::Vector{Float64},
+    broadening::Float64
+)
+
+    energyGs, groundState = groundSE
+
+    # calculate c_ν |GS>
+    #=display(sort([v for (k, v) in groundState if k[1] == 1], rev=true))=#
+    excitedState = ApplyOperator([probe], groundState)
+
+    # calculate c^†_ν |GS>
+    excitedStateDag = ApplyOperator([probeDag], groundState)
+
+    # create array of frequency points and spectral function
+    specFuncArray = [0 .* freqArray for _ in eigVals]
+
+    # loop over eigenstates of the excited symmetry sectors,
+    # calculated overlaps and multiply the appropriate denominators.
+    @sync begin
+        @async Threads.@threads for index in eachindex(eigVals)
+            particleWeight = StateOverlap(eigVecs[index], excitedState)^2
+            specFuncArray[index] += particleWeight * broadening ./ ((freqArray .- energyGs .+ eigVals[index]) .^ 2 .+ broadening^2)
+            holeWeight = StateOverlap(eigVecs[index], excitedStateDag)^2
+            specFuncArray[index] += holeWeight * broadening ./ ((freqArray .+ energyGs .- eigVals[index]) .^ 2 .+ broadening^2)
+        end
+    end
+    specFuncArray = sum(specFuncArray)
+    return specFuncArray
+end
+
+
+function SpecFunc(
+    groundSE::Tuple{Float64, Dict{BitVector,Float64}},
     eigVals::Dict{Tuple{Int64, Int64}, Vector{Float64}},
     eigVecs::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Float64}}},
     probe::Tuple{String,Vector{Int64},Float64},
