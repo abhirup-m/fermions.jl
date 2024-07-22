@@ -21,8 +21,14 @@ end
 
 
 function BasisStates(numLevels::Int64; totOccCriteria::Function=(x, N) -> true, magzCriteria::Function=x -> true, localCriteria::Function=x -> true)
-    return [Dict(BitVector(config) => 1.0) for config in digits.(0:2^numLevels-1, base=2, pad=numLevels) |> reverse
-            if totOccCriteria(config, numLevels) && magzCriteria(config) && localCriteria(config)]
+    basis = Dict{BitVector, Float64}[]
+    for decimalNum in 0:2^numLevels-1
+        config = digits(decimalNum, base=2, pad=numLevels) |> reverse
+        if totOccCriteria(config, numLevels) && magzCriteria(config) && localCriteria(config)
+            push!(basis, Dict(BitVector(config) => 1.0))
+        end
+    end
+    return basis
 end
 
 
