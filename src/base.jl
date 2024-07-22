@@ -22,7 +22,7 @@ function roundTo(val, tolerance)
 end
 
 
-function BasisStates(numLevels::Int64, totOcc::Int64; magzCriteria::Int64=nothing, localCriteria::Function=x -> true)
+function BasisStates(numLevels::Int64, totOcc::Int64; magzCriteria::Function=x -> true, localCriteria::Function=x -> true)
     basis = Dict{BitVector, Float64}[]
     configs = Combinatorics.permutations([fill(1, totOcc); fill(0, numLevels - totOcc)]) |> unique |> collect
     for config in configs
