@@ -1,3 +1,5 @@
+using Combinatorics
+
 """
 Returns a set of basis states in the form
 [[0,0,...,0],
@@ -17,6 +19,18 @@ but for a specified total magnetisation.
 # rounds off a given float to the desired tolerance
 function roundTo(val, tolerance)
     return round(val, digits=trunc(Int, -log10(tolerance)))
+end
+
+
+function BasisStates(numLevels::Int64, totOcc::Int64; magzCriteria::Int64=nothing, localCriteria::Function=x -> true)
+    basis = Dict{BitVector, Float64}[]
+    configs = Combinatorics.permutations([fill(1, totOcc); fill(0, numLevels - totOcc)]) |> unique |> collect
+    for config in configs
+        if magzCriteria(config) && localCriteria(config)
+            push!(basis, Dict(BitVector(config) => 1.0))
+        end
+    end
+    return basis
 end
 
 
