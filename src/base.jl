@@ -24,7 +24,7 @@ end
 
 function BasisStates(numLevels::Int64, totOcc::Int64; magzCriteria::Function=x -> true, localCriteria::Function=x -> true)
     basis = Dict{BitVector, Float64}[]
-    configs = Combinatorics.permutations([fill(1, totOcc); fill(0, numLevels - totOcc)]) |> unique |> collect
+    configs = Combinatorics.multiset_permutations([fill(1, totOcc); fill(0, numLevels - totOcc)], numLevels) |> collect
     for config in configs
         if magzCriteria(config) && localCriteria(config)
             push!(basis, Dict(BitVector(config) => 1.0))
