@@ -102,8 +102,8 @@ function SpecFunc(
     groundSE::Tuple{Float64, Dict{BitVector,Float64}},
     eigVals::Vector{Float64},
     eigVecs::Vector{Dict{BitVector,Float64}},
-    probe::Tuple{String,Vector{Int64},Float64},
-    probeDag::Tuple{String,Vector{Int64},Float64},
+    probe::Vector{Tuple{String,Vector{Int64},Float64}},
+    probeDag::Vector{Tuple{String,Vector{Int64},Float64}},
     freqArray::Vector{Float64},
     broadening::Float64
 )
@@ -112,10 +112,10 @@ function SpecFunc(
 
     # calculate c_ν |GS>
     #=display(sort([v for (k, v) in groundState if k[1] == 1], rev=true))=#
-    excitedState = ApplyOperator([probe], groundState)
+    excitedState = ApplyOperator(probe, groundState)
 
     # calculate c^†_ν |GS>
-    excitedStateDag = ApplyOperator([probeDag], groundState)
+    excitedStateDag = ApplyOperator(probeDag, groundState)
 
     # create array of frequency points and spectral function
     specFuncArray = [0 .* freqArray for _ in eigVals]
