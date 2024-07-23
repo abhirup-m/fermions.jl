@@ -5,10 +5,10 @@ function HubbardDimerMatrix(eps, U, hop_t)
     hubbardDimerMatrix[(1, -1)] = [eps[4] -hop_t[2]; -hop_t[2] eps[2]]
     hubbardDimerMatrix[(2, 2)] = [eps[1] + eps[3];;]
     hubbardDimerMatrix[(2, 0)] = (
-        [U[2]+sum(eps[3:4]) -hop_t[1] hop_t[2] 0;
-        -hop_t[1] sum(eps[[1, 4]]) 0 -hop_t[2];
-        hop_t[2] 0 sum(eps[[2, 3]]) hop_t[1];
-        0 -hop_t[2] hop_t[1] sum(eps[[1, 2]])+U[1]]
+        [U[2]+sum(eps[3:4]) hop_t[1] -hop_t[2] 0;
+        hop_t[1] sum(eps[[1, 4]]) 0 hop_t[2];
+        -hop_t[2] 0 sum(eps[[2, 3]]) -hop_t[1];
+        0 hop_t[2] -hop_t[1] sum(eps[[1, 2]])+U[1]]
     )
     hubbardDimerMatrix[(2, -2)] = [eps[2] + eps[4];;]
     hubbardDimerMatrix[(3, 1)] = [U[2]+sum(eps[[1, 3, 4]]) hop_t[2]; hop_t[2] U[1]+sum(eps[1:3])]

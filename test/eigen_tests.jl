@@ -8,6 +8,9 @@
         eigvals, eigvecs = Spectrum(operatorList, basis)
         comparisonMatrix = HubbardDimerMatrix(eps, U, hop_t)[(n, m)]
         eigvalTest, eigvecTest = eigen(comparisonMatrix)
+        if (n,m) == (2,0)
+            display(eigvecTest)
+        end
         @test eigvals ≈ eigvalTest
         for (i, v2) in enumerate(eachcol(eigvecTest))
             @test collect(values(eigvecs[i])) ./ collect(values(eigvecs[i]))[1] ≈ v2 ./ v2[1]
