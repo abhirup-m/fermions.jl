@@ -191,3 +191,13 @@ function tripartiteInfo(
     I2_A_BC = Threads.@spawn mutInfo(groundState, (reducingIndices[1], BC_indices); reducingConfigs=(reducingConfigs[1], BC_configs))
     return sum([1, 1, -1] .* fetch.([I2_A_B, I2_A_C, I2_A_BC]))
 end
+
+
+function ThermalAverage(
+        eigenStates::Vector{Dict{BitVector, Float64}},
+        eigenVals::Vector{Float64},
+        operator::Vector{Tuple{String, Vector{Int64}, Float64}},
+        invTemp::Float64,
+    )
+    return sum(fetch.([Threads.@spawn exp(-invTemp * energy) * FastCorrelation(state, operator) for (state, energy) in zip(eigenStates, eigenVals)])) / sum(exp.(-invTemp .* eigenVals))
+end
