@@ -5,11 +5,11 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
     stateFlowArray = Dict{BitVector,Float64}[]
     push!(stateFlowArray, initState)
 
-    for alpha in alphaValues[1:numSteps]
+    @showprogress for alpha in alphaValues[1:numSteps]
         newState = stateExpansionFunction(stateFlowArray[end], sectors)
         unitaryOperatorList = unitaryOperatorFunction(alpha, numEntangled, sectors)
         numEntangled = div(length(collect(keys(newState))[1]), 2)
-        stateRenormalisation = fetch.([Threads.@spawn fermions.ApplyOperator([operator], newState) for operator in unitaryOperatorList])
+        stateRenormalisation = fetch.([Threads.@spawn ApplyOperator([operator], newState) for operator in unitaryOperatorList])
         mergewith!(+, newState, stateRenormalisation...)
 
         keepIndices = abs.(values(newState)) ./ maximum(abs.(values(newState))) .> tolerance

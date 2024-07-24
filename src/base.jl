@@ -69,6 +69,15 @@ function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, in
     Threads.@threads for i in eachindex(operator)
         opType, opMembers, opStrength = operator[i]
         for (incomingBasisState, coefficient) in incomingState
+            if (
+                ('+' in opType && incomingBasisState[findlast(x -> x == '+', opType)] == 1) ||
+                ('-' in opType && incomingBasisState[findlast(x -> x == '-', opType)] == 0) ||
+                ('n' in opType && incomingBasisState[findlast(x -> x == 'n', opType)] == 0) ||
+                ('h' in opType && incomingBasisState[findlast(x -> x == 'h', opType)] == 1)
+                )
+                continue
+            end
+
             newCoefficient = coefficient
             outgoingBasisState = copy(incomingBasisState)
 
