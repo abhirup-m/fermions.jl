@@ -23,7 +23,7 @@ end
 
 
 function BasisStates(numLevels::Int64, totOcc::Int64; magzCriteria::Function=x -> true, localCriteria::Function=x -> true)
-    basis = Dict{BitVector, Float64}[]
+    basis = Dict{BitVector,Float64}[]
     configs = Combinatorics.multiset_permutations([fill(1, totOcc); fill(0, numLevels - totOcc)], numLevels) |> collect
     for config in configs
         if magzCriteria(config) && localCriteria(config)
@@ -35,7 +35,7 @@ end
 
 
 function BasisStates(numLevels::Int64; totOccCriteria::Function=(x, N) -> true, magzCriteria::Function=x -> true, localCriteria::Function=x -> true)
-    basis = Dict{BitVector, Float64}[]
+    basis = Dict{BitVector,Float64}[]
     for decimalNum in 0:2^numLevels-1
         config = digits(decimalNum, base=2, pad=numLevels) |> reverse
         if totOccCriteria(config, numLevels) && magzCriteria(config) && localCriteria(config)
@@ -74,7 +74,7 @@ function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, in
                 ('-' in opType && incomingBasisState[findlast(x -> x == '-', opType)] == 0) ||
                 ('n' in opType && incomingBasisState[findlast(x -> x == 'n', opType)] == 0) ||
                 ('h' in opType && incomingBasisState[findlast(x -> x == 'h', opType)] == 1)
-                )
+            )
                 continue
             end
 
@@ -115,7 +115,7 @@ function OperatorMatrix(basisStates::Vector{Dict{BitVector,Float64}}, operator::
     newStates = fetch.([Threads.@spawn ApplyOperator(operator, incomingState) for incomingState in basisStates])
     Threads.@threads for incomingIndex in eachindex(newStates)
         Threads.@threads for outgoingIndex in eachindex(basisStates)
-            operatorMatrix[outgoingIndex, incomingIndex] = StateOverlap(basisStates[outgoingIndex], newStates[incomingIndex]) 
+            operatorMatrix[outgoingIndex, incomingIndex] = StateOverlap(basisStates[outgoingIndex], newStates[incomingIndex])
         end
     end
     return operatorMatrix
