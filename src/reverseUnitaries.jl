@@ -39,7 +39,7 @@ function unitaries2CK(alpha::Float64, num_entangled::Integer, sectors::String)
     # first right channel IOM site is inserted just after the first
     # left channel IOM site.
     rightIOM = leftIOM + 1
-    unitaryTerms = []
+    unitaryTerms = Tuple{String,Vector{Int64},Float64}[]
     if 'p' in sectors
         leftPTerms = vcat([kondoOperators((2 * i + 1, 2 * leftIOM + 1), alpha) for i in leftChannel]...)
         rightPTerms = vcat([kondoOperators((2 * i + 1, 2 * rightIOM + 1), alpha) for i in rightChannel]...)
@@ -74,7 +74,7 @@ function unitaries1CK(alpha::Float64, num_entangled::Integer, sectors::String)
     @assert sectors ∈ ("p", "h", "ph")
     IOMposition = 2 * num_entangled + 1
     innerStates = 2:num_entangled
-    unitaryTerms = []
+    unitaryTerms = Tuple{String,Vector{Int64},Float64}[]
     if 'p' in sectors
         particleTerms = vcat([kondoOperators((2 * i - 1, IOMposition), alpha) for i in innerStates]...)
         unitaryTerms = [unitaryTerms; particleTerms]
