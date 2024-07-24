@@ -61,23 +61,24 @@ end
 
 
 function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, incomingState::Dict{BitVector,Float64}; addOn=false, tolerance=1e-16)
+    @assert !isempty(operator)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
 
     replaceState = ifelse(addOn, copy(incomingState), Dict{BitVector,Float64}())
     if addOn
         map!(x -> x/length(operator), values(replaceState))
     end
-    outgoingState = Dict{BitVector,Float64}[replaceState for _ in operator]
+    outgoingState = [copy(replaceState) for i in 1:length(operator)]
 
     # loop over all operator tuples within operatorList
     Threads.@threads for i in eachindex(operator)
         opType, opMembers, opStrength = operator[i]
         for (incomingBasisState, coefficient) in incomingState
             if (
-                ('+' in opType && incomingBasisState[findlast(x -> x == '+', opType)] == 1) ||
-                ('-' in opType && incomingBasisState[findlast(x -> x == '-', opType)] == 0) ||
-                ('n' in opType && incomingBasisState[findlast(x -> x == 'n', opType)] == 0) ||
-                ('h' in opType && incomingBasisState[findlast(x -> x == 'h', opType)] == 1)
+                ('+' in opType && incomingBasisState[opMembers[findlast(x -> x == '+', opType)]] == 1) ||
+                ('-' in opType && incomingBasisState[opMembers[findlast(x -> x == '-', opType)]] == 0) ||
+                ('n' in opType && incomingBasisState[opMembers[findlast(x -> x == 'n', opType)]] == 0) ||
+                ('h' in opType && incomingBasisState[opMembers[findlast(x -> x == 'h', opType)]] == 1)
             )
                 continue
             end
