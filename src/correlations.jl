@@ -3,12 +3,7 @@ function FastCorrelation(state::Dict{BitVector,Float64}, operator::Vector{Tuple{
     # Gstate vector is of the form {|1>: c_1, |2>: c_2, ... |n>: c_n}.
     # loop over the pairs (|m>, c_m)
 
-    # check that state is normalised: ∑ c_m^2 = 1
-    @assert isapprox(sum(values(state) .^ 2), 1, atol=1e-6)
-
-
-    correlation = sum(fetch.([Threads.@spawn StateOverlap(state, ApplyOperator([term], state))
-                              for term in operator]))
+    correlation = StateOverlap(state, ApplyOperator(operator, state)) / sum(values(state) .^ 2)
     return correlation
 end
 

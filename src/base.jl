@@ -63,10 +63,11 @@ end
 function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, incomingState::Dict{BitVector,Float64}; tolerance=1e-16)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
 
-    outgoingState = typeof(incomingState)()
+    outgoingState = Dict{BitVector,Float64}[Dict{BitVector,Float64}() for _ in operator]
 
     # loop over all operator tuples within operatorList
-    for (opType, opMembers, opStrength) in operator
+    Threads.@threads for i in eachindex(operator)
+        opType, opMembers, opStrength = operator[i]
         for (incomingBasisState, coefficient) in incomingState
             newCoefficient = coefficient
             outgoingBasisState = copy(incomingBasisState)
@@ -87,17 +88,16 @@ function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, in
             end
 
             if abs(newCoefficient) > tolerance
-                if haskey(outgoingState, outgoingBasisState)
-                    outgoingState[outgoingBasisState] += opStrength * newCoefficient
+                if haskey(outgoingState[i], outgoingBasisState)
+                    outgoingState[i][outgoingBasisState] += opStrength * newCoefficient
                 else
-                    outgoingState[outgoingBasisState] = opStrength * newCoefficient
+                    outgoingState[i][outgoingBasisState] = opStrength * newCoefficient
                 end
             end
         end
     end
 
-    outgoingState = Dict(k => roundTo(v, tolerance) for (k, v) in outgoingState)
-    return outgoingState
+    return mergewith(+, outgoingState...)
 end
 
 
