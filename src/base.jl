@@ -60,10 +60,14 @@ function TransformBit(qubit::Bool, operator::Char)
 end
 
 
-function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, incomingState::Dict{BitVector,Float64}; tolerance=1e-16)
+function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, incomingState::Dict{BitVector,Float64}; addOn=false, tolerance=1e-16)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
 
-    outgoingState = Dict{BitVector,Float64}[Dict{BitVector,Float64}() for _ in operator]
+    replaceState = ifelse(addOn, copy(incomingState), Dict{BitVector,Float64}())
+    if addOn
+        map!(x -> x/length(operator), values(replaceState))
+    end
+    outgoingState = Dict{BitVector,Float64}[replaceState for _ in operator]
 
     # loop over all operator tuples within operatorList
     Threads.@threads for i in eachindex(operator)
