@@ -1,5 +1,5 @@
 """Calculate static correlation function ⟨ψ|O|ψ⟩ of the provided operator."""
-function FastCorrelation(state::Dict{BitVector,Float64}, operator::Vector{Tuple{String,Vector{Int64},Float64}})
+function GenCorrelation(state::Dict{BitVector,Float64}, operator::Vector{Tuple{String,Vector{Int64},Float64}})
     # Gstate vector is of the form {|1>: c_1, |2>: c_2, ... |n>: c_n}.
     # loop over the pairs (|m>, c_m)
 
