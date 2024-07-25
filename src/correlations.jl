@@ -193,5 +193,5 @@ function ThermalAverage(
     operator::Vector{Tuple{String,Vector{Int64},Float64}},
     invTemp::Float64,
 )
-    return sum(fetch.([Threads.@spawn exp(-invTemp * energy) * FastCorrelation(state, operator) for (state, energy) in zip(eigenStates, eigenVals)])) / sum(exp.(-invTemp .* eigenVals))
+    return sum(fetch.([Threads.@spawn exp(-invTemp * energy) * GenCorrelation(state, operator) for (state, energy) in zip(eigenStates, eigenVals)])) / sum(exp.(-invTemp .* eigenVals))
 end
