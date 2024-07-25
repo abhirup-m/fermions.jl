@@ -24,9 +24,14 @@ end
 
 function SpinFlip(leftStates::Vector{Int64}, rightStates::Vector{Int64})
     spinFlip = Tuple{String,Vector{Int64},Float64}[]
+    coveredPairs = []
     for (i1, i2) in Iterators.product(leftStates, rightStates)
-        push!(spinFlip, ("+-+-", [2 * i1 + 1, 2 * i1 + 2, 2 * i2 + 2, 2 * i2 + 1], 1.0 / (length(leftStates) * length(rightStates))))
+        if (i1, i2) ∉ coveredPairs && (i2, i1) ∉ coveredPairs
+            push!(spinFlip, ("+-+-", [2 * i1 + 1, 2 * i1 + 2, 2 * i2 + 2, 2 * i2 + 1], 1.0 / (length(leftStates) * length(rightStates))))
+            push!(coveredPairs, (i1, i2))
+        end
     end
+    println(length(spinFlip))
     return spinFlip
 end
 

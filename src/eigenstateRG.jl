@@ -13,8 +13,9 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
 
 
         if maxSize < length(newState)
+            println("Drop ratio ~ ", round(sum(sort(abs.(values(newState)))[maxSize:end] .^ 2) / sum(values(newState) .^ 2), sigdigits=1))
             newState = Dict(sort(collect(newState), by=x->x|>last|>abs)[1:maxSize])
-            println("Drop ratio ~ ", round(sum(sort(collect(values(newState)))[maxSize:end] .^ 2) / sum(values(newState) .^ 2), sigdigits=1))
+            println(newState)
         end
         total_norm = sum(values(newState) .^ 2)^0.5
         newState = Dict(keys(newState) .=> values(newState) ./ total_norm)
