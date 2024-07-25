@@ -1,5 +1,6 @@
 function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vector{Float64}, numSteps::Integer, unitaryOperatorFunction::Function, stateExpansionFunction::Function, sectors::String; maxSize::Int64=0, tolerance=1e-16)
 
+    maxSize *= length(initState)
     @assert numSteps ≤ length(alphaValues)
     numEntangled = div(length(collect(keys(initState))[1]), 2)
     stateFlowArray = Dict{BitVector,Float64}[]
@@ -14,7 +15,8 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
         if maxSize < length(newState)
             println("Drop ratio ~ ", sum(sort(abs.(values(newState)), rev=true)[maxSize:end] .^ 2) / sum(values(newState) .^ 2))
             newState = Dict(sort(collect(newState), by=x->x|>last|>abs, rev=true)[1:maxSize])
-            println((minimum(abs.(values(newState))), sum(values(newState) .^ 2)))
+        else
+            println("Drop ratio ~ ", 0)
         end
         total_norm = sum(values(newState) .^ 2)^0.5
         newState = Dict(keys(newState) .=> values(newState) ./ total_norm)
