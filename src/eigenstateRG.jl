@@ -11,10 +11,9 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
         numEntangled = div(length(collect(keys(newState))[1]), 2)
         mergewith!(+, newState, fetch.([Threads.@spawn ApplyOperator([operator], newState; tolerance=tolerance) for operator in unitaryOperatorList])...)
 
-
         if maxSize < length(newState)
-            println("Drop ratio ~ ", round(sum(sort(abs.(values(newState)))[maxSize:end] .^ 2) / sum(values(newState) .^ 2), sigdigits=1))
-            newState = Dict(sort(collect(newState), by=x->x|>last|>abs)[1:maxSize])
+            println("Drop ratio ~ ", sum(sort(abs.(values(newState)), rev=true)[maxSize:end] .^ 2) / sum(values(newState) .^ 2))
+            newState = Dict(sort(collect(newState), by=x->x|>last|>abs, rev=true)[1:maxSize])
             println((minimum(abs.(values(newState))), sum(values(newState) .^ 2)))
         end
         total_norm = sum(values(newState) .^ 2)^0.5
