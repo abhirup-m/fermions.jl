@@ -9,7 +9,6 @@ include("correlations.jl")
 include("eigenstateRG.jl")
 include("reverseUnitaries.jl")
 include("stateExpansion.jl")
-include("computables.jl")
 include("iterativeDiag.jl")
 
 end # module fermions

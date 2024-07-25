@@ -1,11 +1,9 @@
 """Calculate static correlation function ⟨ψ|O|ψ⟩ of the provided operator."""
 function GenCorrelation(state::Dict{BitVector,Float64}, operator::Vector{Tuple{String,Vector{Int64},Float64}})
     # Gstate vector is of the form {|1>: c_1, |2>: c_2, ... |n>: c_n}.
-    # loop over the pairs (|m>, c_m)
-
-    intermState = ApplyOperator(operator, state)
-    correlation = StateOverlap(state, intermState) / sum(values(state) .^ 2)
-    return correlation
+    intermStates = fetch.([Threads.@spawn ApplyOperator([term], state) for term in operator])
+    correlation = sum(fetch.([Threads.@spawn StateOverlap(state, intermState) for intermState in intermStates]))
+    return correlation / sum(values(state) .^ 2)
 end
 
 
@@ -95,7 +93,7 @@ end
 
 
 function SpecFunc(
-    groundSE::Tuple{Float64, Dict{BitVector,Float64}},
+    groundSE::Tuple{Float64,Dict{BitVector,Float64}},
     eigVals::Vector{Float64},
     eigVecs::Vector{Dict{BitVector,Float64}},
     probe::Vector{Tuple{String,Vector{Int64},Float64}},
@@ -132,9 +130,9 @@ end
 
 
 function SpecFunc(
-    groundSE::Tuple{Float64, Dict{BitVector,Float64}},
-    eigVals::Dict{Tuple{Int64, Int64}, Vector{Float64}},
-    eigVecs::Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Float64}}},
+    groundSE::Tuple{Float64,Dict{BitVector,Float64}},
+    eigVals::Dict{Tuple{Int64,Int64},Vector{Float64}},
+    eigVecs::Dict{Tuple{Int64,Int64},Vector{Dict{BitVector,Float64}}},
     probe::Tuple{String,Vector{Int64},Float64},
     probeDag::Tuple{String,Vector{Int64},Float64},
     freqArray::Vector{Float64},
@@ -190,10 +188,10 @@ end
 
 
 function ThermalAverage(
-        eigenStates::Vector{Dict{BitVector, Float64}},
-        eigenVals::Vector{Float64},
-        operator::Vector{Tuple{String, Vector{Int64}, Float64}},
-        invTemp::Float64,
-    )
+    eigenStates::Vector{Dict{BitVector,Float64}},
+    eigenVals::Vector{Float64},
+    operator::Vector{Tuple{String,Vector{Int64},Float64}},
+    invTemp::Float64,
+)
     return sum(fetch.([Threads.@spawn exp(-invTemp * energy) * FastCorrelation(state, operator) for (state, energy) in zip(eigenStates, eigenVals)])) / sum(exp.(-invTemp .* eigenVals))
 end
