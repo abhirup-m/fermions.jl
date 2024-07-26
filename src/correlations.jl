@@ -93,7 +93,6 @@ end
 
 
 function SpecFunc(
-    groundSE::Tuple{Float64,Dict{BitVector,Float64}},
     eigVals::Vector{Float64},
     eigVecs::Vector{Dict{BitVector,Float64}},
     probe::Vector{Tuple{String,Vector{Int64},Float64}},
@@ -102,29 +101,28 @@ function SpecFunc(
     broadening::Float64
 )
 
-    energyGs, groundState = groundSE
+    energyGs, groundState = eigVals[1], eigVecs[1]
+    gsBasisState = collect(keys(groundState))[1]
+    excitedBasisState = collect(keys(ApplyOperator(probe, groundState)))[1]
+    excitedBasisStateDag = collect(keys(ApplyOperator(probeDag, groundState)))[1]
 
-    # calculate c_ν |GS>
-    #=display(sort([v for (k, v) in groundState if k[1] == 1], rev=true))=#
-    excitedState = ApplyOperator(probe, groundState)
+    excitedSectors = [
+                      (sum(excitedBasisState), sum(excitedBasisState[1:2:end]) - sum(excitedBasisState[2:2:end])),
+                      (sum(excitedBasisStateDag), sum(excitedBasisStateDag[1:2:end]) - sum(excitedBasisStateDag[2:2:end]))
+                     ]
 
-    # calculate c^†_ν |GS>
-    excitedStateDag = ApplyOperator(probeDag, groundState)
-
-    # create array of frequency points and spectral function
-    specFuncArray = [0 .* freqArray for _ in eigVals]
-
-    # loop over eigenstates of the excited symmetry sectors,
-    # calculated overlaps and multiply the appropriate denominators.
-    @sync begin
-        @async Threads.@threads for index in eachindex(eigVals)
-            particleWeight = StateOverlap(eigVecs[index], excitedState)^2
-            specFuncArray[index] += particleWeight * broadening ./ ((freqArray .- energyGs .+ eigVals[index]) .^ 2 .+ broadening^2)
-            holeWeight = StateOverlap(eigVecs[index], excitedStateDag)^2
-            specFuncArray[index] += holeWeight * broadening ./ ((freqArray .+ energyGs .- eigVals[index]) .^ 2 .+ broadening^2)
+    excitedVecs = Dict(excitedSectors .=> [Dict{BitVector, Float64}[], Dict{BitVector, Float64}[]])
+    excitedVals = Dict(excitedSectors .=> [Float64[], Float64[]])
+    for (energy, state) in zip(eigVals, eigVecs)
+        basisState = collect(keys(state))[1]
+        sector = (sum(basisState), sum(basisState[1:2:end]) - sum(basisState[2:2:end]))
+        if sector in excitedSectors
+            push!(excitedVecs[sector], state)
+            push!(excitedVals[sector], energy)
         end
     end
-    specFuncArray = sum(specFuncArray)
+
+    specFuncArray = SpecFunc((energyGs, groundState), excitedVals, excitedVecs, probe, probeDag, freqArray, broadening)
     return specFuncArray
 end
 

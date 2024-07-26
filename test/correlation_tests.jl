@@ -67,7 +67,7 @@ end
     operatorList = HubbardDimerOplist(eps, U, hop_t)
     eigvals, eigvecs = Spectrum(operatorList, basisStates)
     omegaVals = collect(range(-10.0, stop=10.0, length=1000))
-    specfunc = SpecFunc((eigvals[1], eigvecs[1]), eigvals, eigvecs, [("-", [1], 1.0)], [("+", [1], 1.0)], omegaVals, broadening)
+    specfunc = SpecFunc(eigvals, eigvecs, [("-", [1], 1.0)], [("+", [1], 1.0)], omegaVals, broadening)
     specfuncCompare = HubbardDimerSpecFunc(eps, U, hop_t, omegaVals, broadening)
     @test specfunc ./ maximum(specfunc) ≈ specfuncCompare ./ maximum(specfuncCompare)
 end
