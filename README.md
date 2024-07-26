@@ -1,7 +1,35 @@
 # Fermions.jl - Create and Analyse Models of Interacting Electrons
  
-## What is this?
-**Fermions.jl** is a toolkit for designing and analysing second-quantised many-particle Hamiltonians of electrons, potentially interacting with each other. The main point in designing this library is to abstract away the detailed task of writing matrices for many-body Hamiltonians and operators (for correlations functions) with exponentially large sizes; all operators (including Hamiltonians) can be specified using symbols, and the library then provides functions for diagonalising such Hamiltonians and computing observables within the states. (In case you are not accustomed to using second-quantised operators, check [this brief explanation](#a-brief-explanation-of-second-quantised-operators-for-the-uninitiated).)
+![](examples/images/cover.svg)
+
+**Fermions.jl** is a toolkit for designing and analysing second-quantised many-particle Hamiltonians of electrons, potentially interacting with each other. The main point in designing this library is to abstract away the detailed task of writing matrices for many-body Hamiltonians and operators (for correlations functions) with large Hilbert spaces; **all operators (including Hamiltonians) can be specified using predefined symbols, and the library then provides functions for diagonalising such Hamiltonians and computing observables within the states**. (In case you are not accustomed to using second-quantised operators, check [this brief explanation](#a-brief-explanation-of-second-quantised-operators-for-the-uninitiated).)
+
+This library was borne out of a need to numerically construct and solve fermionic Hamiltonians in the course of my doctoral research. While there are similar julia libraries such as [Marco-Di-Tullio/Fermionic.jl](https://github.com/Marco-Di-Tullio/Fermionic.jl) and [qojulia/QuantumOptics.jl](https://github.com/qojulia/QuantumOptics.jl), **fermions.jl is much more intuitive** since it works directly on predefined basis states and allows defining arbitrary fermionic operators and quantum mechanical states. **No complicated abstract classes and objects are needed** to use this library; everything is defined purely in terms of simple collections such as dictionaries, vectors and tuples. This makes the entire process transparent and intuitive.
+
+## Neat features
+
+- High-level of freedom in constructing fermionic Hamiltonians. All Hamiltonians that can be represented as a tensor product of 2-dimensional fermionic Fock-space operators can be modelled using fermions.jl. This covers all purely-electronic Hamiltonians, for example.
+
+- Uses optimised algorithms that make use of symmetries of the problem.
+
+- Provides a wide range of inbuilt functions for calculating various interesting quantities. The ability to construct any general correlation function by using fermionic operators further extends the range of possibilities.
+
+- Provides an iterative diagonalization function that is useful to working with systems of larger sizes.
+
+## Will this be useful for me?
+
+You might find this library useful if you
+
+- spend a lot of time studying Hamiltonian models of fermions, particularly ones that cannot be solved analytically, or
+
+- use a similar library in another language (QuTip in python, for example), but want to migrate to Julia.
+
+
+You will not find this useful if you
+
+- mostly work with bosonic systems and open quantum systems, or
+
+- work in the thermodynamic limit (using methods like quantum Monte Carlo, numerical RG).
 
 ## Installation
 The system must have a running Julia installation in order to use fermions.jl:
@@ -18,12 +46,13 @@ julia> import Pkg
 julia> Pkg.add(url="https://github.com/abhirup-m/fermions.jl")
 ```
 
-# An Illustrative Example: Tight-Binding Model in One Dimension
+# Quick-Start: Tight-Binding Model in One Dimension
 This write-up demonstrates the typical kind of calculations that are possible using the fermions.jl library. The model considered here is a prototypical one, involving spinless electrons hopping on a 1D lattice, with open boundary conditions (the electrons cannot hop beyond the left and right edges of the chain).
 
-<img style="width: 100%;" src="examples/tbm1D.svg"/><br>*Schematic picture of the model being considered here. Circles represent lattice sites and arrows represent electron hopping processes across sites.*
+<img style="width: 100%;" src="examples/images/tbm1D.svg"/><br>*Schematic picture of the model being considered here. Circles represent lattice sites and arrows represent electron hopping processes across sites.*
 
 The Hamiltonian of the model is very simple; there are only two kinds of processes - one that starts from a lattice site $i$ and goes to the site next to it ($i+1$), and another one that goes to the site before it ($i-1$). In terms of operators, the Hamiltonian can be written as
+
 $$H = \sum_i \left(c^\dagger_i c_{i+1} + c^\dagger_{i+1}c_i\right)~.$$
 
 In this write-up, we will now show how to accomplish the following:
@@ -35,6 +64,8 @@ In this write-up, we will now show how to accomplish the following:
 - Calculate thermal correlation functions such as the local particle density at a non-zero temperature.
 
 - Calculate other useful quantities such as the entanglement of a region of space and the spectral function. 
+
+This quick-start example is also available as a [notebook](examples/TightBinding1D.ipynb).
 
 ## Importing Packages
 ```julia
@@ -134,7 +165,7 @@ distribution_mid = [fermions.GenCorrelation(eigvecs[div(numSites, 2)], operator)
 Plots.scatter([distribution_low, distribution_mid], thickness_scaling=1.4, linewidth=3, legend=true,
         xlabel="odd lattice sites", ylabel="probability distribution", labels=["ground state" "excited state"], margin=-1mm)
 ```
-![](examples/output_9_0.svg)
+![](examples/images/output_9_0.svg)
 
 ## Real-space Entanglement
 
@@ -150,11 +181,11 @@ SEE = [fermions.vnEntropy(eigvecs[1], indices) for indices in subsystemIndices]
 Plots.plot(SEE, thickness_scaling=1.4, linewidth=3, legend=false,
         xlabel="lattice site", ylabel="entanglement entropy", margin=-1mm)
 ```
-![](examples/output_11_0.svg)
+![](examples/images/output_11_0.svg)
 
 ## Finite Temperature Calculations: Local Probability Distribution as a Function of Temperature
 
-One can also calculate thermal averages using the library. Similar to the `GenCorrelation` function that computes expectation values in a particular state, the `ThermalAverage(eigvecs, eigvals, operator, beta)` function accepts the complete set of eigenvectors $\{X_i\}$ and eigenvalues $\{\varepsilon_i\}$, an operator $\hat O$ and an inverse temperature beta $\beta$, and calculates the thermal expectation value $\sum_i e^{-\beta E_i}\langle X_i | \hat O | X_i \rangle$. In the snippet below, we compute the thermal average of two operators, the probability of occupying the left edge $\hat n_1$, and the probability of occupying the central site $\hat n_{N/2}$.
+One can also calculate thermal averages using the library. Similar to the `GenCorrelation` function that computes expectation values in a particular state, the `ThermalAverage(eigvecs, eigvals, operator, beta)` function accepts the complete set of eigenvectors $\{X_i\}$ and eigenvalues $\{\varepsilon_i\}$, an operator $\hat O$ and an inverse temperature beta $\beta$, and calculates the thermal expectation value $\sum_i e^{-\beta \varepsilon_i}\langle X_i | \hat O | X_i \rangle$. In the snippet below, we compute the thermal average of two operators, the probability of occupying the left edge $\hat n_1$, and the probability of occupying the central site $\hat n_{N/2}$.
 
 
 ```julia
@@ -174,12 +205,14 @@ Plots.plot(1 ./ invTempRange, [leftOccAverage, centerOccAverage];
     xaxis=:log10, xlabel="temp. / \$\\Delta E\$", ylabel="local occupancy", 
     labels=["left edge" "center"], leftmargin=-5mm, bottommargin=-3mm)
 ```
-![](examples/output_13_0.svg)
+![](examples/images/output_13_0.svg)
 
 ## Spectral Function
 
 As a final demonstration, we show how to calculate the local spectral function for the model. A spectral function $A(\omega)$ captures the probability of exciting the ground state of a system into an excited electron with a particular excitation energy $\omega$; a higher value of the spectral function at a particular frequency indicates a higher likelihood of exciting the system by shedding light of that frequency. Formally, the spectral function associated with the excitation operator $\hat O_1$ and the relaxation operator $\hat O_2$ is defined as 
-$$A(\omega) = -\frac{1}{\pi}\mathrm{Im}\left[\mathcal{F}_\omega(\langle \Psi_\mathrm{gs}\{\hat O_2(t),\hat O_1(0)\}\Psi_\mathrm{gs}\rangle)\right]~,$$
+
+$$ A(\omega) = -\frac{1}{\pi}\mathrm{Im}\left[\mathcal{F}_\omega(\langle \{\hat O_2(t),\hat O_1(0)\}\rangle)\right]~, $$
+
 where $\mathcal{F}_\omega(\cdot)$ is the Fourier transform.
 
 The spectral function is calculated using the provided function `SpecFunc(eigvecs, eigvals, probe, probeDag, freqArr, broadening)`, where `eigvecs, eigvals` constitute the spectrum of the system, `probe` and `probeDag` are the excitation and relaxation operators $\hat O_1$ and $\hat O_2$, `freqArr` is the set of frequency points at which the spectral function must be calculated, and `broadening` is the width of the Lorentzian that will be used to replace poles. For the snippet below, we have taken the local operators $c_{N/2}$ and $c^\dagger_{N/2}$ as the excitation and relaxation operators.
@@ -216,12 +249,15 @@ p = Plots.plot(freqArr, specfunc, thickness_scaling=1.5, linewidth=2, legend=fal
     xlabel="frequency \$\\omega\$", ylabel="spectral function\$", margin=-2mm)
 display(p)
 ```
-![](examples/output_15_0.svg)
+![](examples/images/output_15_0.svg)
 
 ## A Brief explanation of second-quantised operators
 The entire library is built on the idea of using second-quantisation to study many-body Hamiltonians, so a discussion of that is certainly pertinent. Second quantised operators are a convenient way of writing many-body Hamiltonians. This library is only concerned with electrons; these are particles whose states must be antisymmetric with respect to an exchange of the particles. For example, a state of electrons at positions 1 and 2 has to be $|1,2\rangle - |2, 1\rangle$. In order to avoid this clumsy notation, we introduce creation and annihilation operators $c^\dagger_\nu$ and $c_\nu$, which carry the property of antisymmetry within themselves. The two operators, respectively, create and annihilate an electron in the state described by the quantum number $\nu$, which can be the position or momentum, among others; they satisfy $c_1 c_2 = -c_2 c_1$, allowing us to write the above complicated state simply as $c^\dagger_1 c^\dagger_2|0\rangle$.
 
 As an example, we wish to design the Hamiltonian of a single electron hopping across a 1D chain of lattice sites labelled as $i=1$, $i=2$, $i=3$ and so on. The system is such that the electron can only hop on to the nearest-neighbour sites starting from any given site: $i\to i+1$, $i\to i-1$. In order to hop from, say, $i=1$ to $i=2$, the electron must first be _annihilated_ at the site $i=1$ and then _created_ at $i=2$. The creation process is represented by the operator $c^\dagger_1$ (1 representing the site index of the location of the operation), while the annihilation process is represented by $c_2$, the total process being the product of both process: $c^\dagger_1 c_2$. Of course, the opposite process can also happen - the electron can also hop from $i=2$ to $i=1$, so that the total second-quantised Hamiltonian for the dynamics involving sites 1 and 2 is 
+
 $$c^\dagger_1 c_2 + c^\dagger_2 c_1~.$$
+
 Now, the indices 1 and 2 can be represented by any consecutive indices $i$ and $i+1$, leading to the so-called tight-binding Hamiltonian in 1-dimensions:
+
 $$H_\mathrm{TB} = \sum_{i} \left(c^\dagger_i c_{i+1} + c^\dagger_{i+1} c_i\right)$$
