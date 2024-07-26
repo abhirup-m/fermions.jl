@@ -147,8 +147,9 @@ end
 
 function StateOverlap(state1::Dict{BitVector,Float64}, state2::Dict{BitVector,Float64})
     overlap = 0
-    Threads.@threads for (key, val) in collect(state1)
-        if key ∈ keys(state2)
+    keys2 = keys(state2)
+    for (key, val) in state1
+        if key ∈ keys2
             overlap += val * state2[key]
         end
     end
