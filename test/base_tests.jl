@@ -84,15 +84,15 @@ end
         end
         @testset for op2 in ["+", "-", "n", "h"]
             oplist = [(op * op2, [1, 2], 0.5)]
-            if occursin("-", op * op2) || occursin("n", op * op2)
+            if occursin("-", oplist[1][1]) || occursin("n", oplist[1][1])
                 @test isempty(ApplyOperator(oplist, state))
-            elseif op * op2 == "++"
+            elseif oplist[1][1] == "++"
                 @test ApplyOperator(oplist, state) == Dict(BitVector([1, 1]) => 0.05)
-            elseif op * op2 == "+h"
+            elseif oplist[1][1] == "+h"
                 @test ApplyOperator(oplist, state) == Dict(BitVector([1, 0]) => 0.05)
-            elseif op * op2 == "h+"
+            elseif oplist[1][1] == "h+"
                 @test ApplyOperator(oplist, state) == Dict(BitVector([0, 1]) => 0.05)
-            elseif op * op2 == "hh"
+            elseif oplist[1][1] == "hh"
                 @test ApplyOperator(oplist, state) == Dict(BitVector([0, 0]) => 0.05)
             end
         end

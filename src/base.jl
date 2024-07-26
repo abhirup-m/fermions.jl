@@ -69,19 +69,21 @@ function ApplyOperator(operator::Vector{Tuple{String,Vector{Int64},Float64}}, in
         map!(x -> x/length(operator), values(replaceState))
     end
     outgoingState = [copy(replaceState) for i in 1:length(operator)]
-
     # loop over all operator tuples within operatorList
     Threads.@threads for i in eachindex(operator)
+        goodIncomingStates = copy(incomingState)
         opType, opMembers, opStrength = operator[i]
-        for (incomingBasisState, coefficient) in incomingState
-            if (
-                ('+' in opType && incomingBasisState[opMembers[findlast(x -> x == '+', opType)]] == 1) ||
-                ('-' in opType && incomingBasisState[opMembers[findlast(x -> x == '-', opType)]] == 0) ||
-                ('n' in opType && incomingBasisState[opMembers[findlast(x -> x == 'n', opType)]] == 0) ||
-                ('h' in opType && incomingBasisState[opMembers[findlast(x -> x == 'h', opType)]] == 1)
-            )
+        for i in eachindex(opMembers)[end:-1:2]
+            if opMembers[i] ∈ opMembers[i+1:end]
                 continue
             end
+            if opType[i] == '+' || opType[i] == 'h'
+                filter!(p -> p[1][opMembers[i]] == 0, goodIncomingStates)
+            else
+                filter!(p -> p[1][opMembers[i]] == 1, goodIncomingStates)
+            end
+        end
+        for (incomingBasisState, coefficient) in goodIncomingStates
 
             newCoefficient = coefficient
             outgoingBasisState = copy(incomingBasisState)
