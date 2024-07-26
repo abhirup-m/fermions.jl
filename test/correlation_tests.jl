@@ -4,16 +4,16 @@
     U = rand()
     eps = -U / 2
     Δ = (U^2 + 16 * hop_t^2)^0.5
-    operatorList = HubbardDimerOplist([eps, eps, eps, eps], [U, U], [hop_t, hop_t])
+    operatorList = HubbardDimerOplist(eps, U, hop_t)
     eigvals, eigvecs = Spectrum(operatorList, basisStates)
 
     doubOccOperator = [("nn", [1, 2], 0.5), ("nn", [3, 4], 0.5)]
     totSzOperator = [("n", [1], 0.5), ("n", [2], -0.5), ("n", [3], 0.5), ("n", [4], -0.5)]
     spinFlipOperator = [("+-+-", [1, 2, 4, 3], 1.0), ("+-+-", [3, 4, 2, 1], 1.0)]
 
-    @test FastCorrelation(eigvecs[1], doubOccOperator) ≈ (Δ - U) / (4 * Δ)
-    @test FastCorrelation(eigvecs[1], totSzOperator) ≈ 0
-    @test FastCorrelation(eigvecs[1], spinFlipOperator) ≈ -8 * hop_t^2 / (Δ * (Δ - U))
+    @test GenCorrelation(eigvecs[1], doubOccOperator) ≈ (Δ - U) / (4 * Δ)
+    @test GenCorrelation(eigvecs[1], totSzOperator) ≈ 0
+    @test GenCorrelation(eigvecs[1], spinFlipOperator) ≈ -8 * hop_t^2 / (Δ * (Δ - U))
 end
 
 
@@ -64,10 +64,10 @@ end
     U = abs(rand())
     eps = -U / 2
     broadening = 1e-3
-    operatorList = HubbardDimerOplist([eps, eps, eps, eps], [U, U], [hop_t, hop_t])
+    operatorList = HubbardDimerOplist(eps, U, hop_t)
     eigvals, eigvecs = Spectrum(operatorList, basisStates)
     omegaVals = collect(range(-10.0, stop=10.0, length=1000))
-    specfunc = SpecFunc(eigvals, eigvecs, ("-", [1], 1.0), ("+", [1], 1.0), omegaVals, broadening)
+    specfunc = SpecFunc((eigvals[1], eigvecs[1]), eigvals, eigvecs, [("-", [1], 1.0)], [("+", [1], 1.0)], omegaVals, broadening)
     specfuncCompare = HubbardDimerSpecFunc(eps, U, hop_t, omegaVals, broadening)
     @test specfunc ./ maximum(specfunc) ≈ specfuncCompare ./ maximum(specfuncCompare)
 end

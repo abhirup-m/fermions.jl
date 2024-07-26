@@ -134,12 +134,16 @@ end
 end
 
 @testset "OperatorMatrix" begin
-    eps = rand(4)
-    hop_t = rand(2)
-    U = rand(2)
+    eps = rand()
+    hop_t = rand()
+    U = rand()
     operatorList = HubbardDimerOplist(eps, U, hop_t)
     @testset "sector=$((n, m))" for (n, m) in [(0, 0), (1, 1), (1, -1), (2, 2), (2, 0), (2, -2), (3, 1), (3, -1), (4, 0)]
         basisStates = BasisStates(4; totOccCriteria=(x, N) -> sum(x) == n, magzCriteria=x -> sum(x[1:2:end]) - sum(x[2:2:end]) == m)
+        if (n,m) == (2,0)
+            @test Set([collect(keys(b))[1] for b in basisStates]) == Set([[0, 0, 1, 1], [0, 1, 1, 0], [1, 0, 0, 1], [1, 1, 0, 0]])
+            basisStates = [Dict(BitVector([1, 0, 0, 1]) => 1.0), Dict(BitVector([0, 1, 1, 0]) => 1.0), Dict(BitVector([1, 1, 0, 0]) => 1.0), Dict(BitVector([0, 0, 1, 1]) => 1.0)]
+        end
         computedMatrix = OperatorMatrix(basisStates, operatorList)
         comparisonMatrix = HubbardDimerMatrix(eps, U, hop_t)[(n, m)]
         @test comparisonMatrix ≈ computedMatrix

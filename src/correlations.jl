@@ -133,8 +133,8 @@ function SpecFunc(
     groundSE::Tuple{Float64,Dict{BitVector,Float64}},
     eigVals::Dict{Tuple{Int64,Int64},Vector{Float64}},
     eigVecs::Dict{Tuple{Int64,Int64},Vector{Dict{BitVector,Float64}}},
-    probe::Tuple{String,Vector{Int64},Float64},
-    probeDag::Tuple{String,Vector{Int64},Float64},
+    probe::Vector{Tuple{String,Vector{Int64},Float64}},
+    probeDag::Vector{Tuple{String,Vector{Int64},Float64}},
     freqArray::Vector{Float64},
     broadening::Float64
 )
@@ -143,12 +143,12 @@ function SpecFunc(
 
     # calculate c_ν |GS>
     #=display(sort([v for (k, v) in groundState if k[1] == 1], rev=true))=#
-    excitedState = ApplyOperator([probe], groundState)
+    excitedState = ApplyOperator(probe, groundState)
     exampleState = collect(keys(excitedState))[1]
     excitedSector = (sum(exampleState), sum(exampleState[1:2:end] - exampleState[2:2:end]))
 
     # calculate c^†_ν |GS>
-    excitedStateDag = ApplyOperator([probeDag], groundState)
+    excitedStateDag = ApplyOperator(probeDag, groundState)
     exampleState = collect(keys(excitedStateDag))[1]
     excitedSectorDag = (sum(exampleState), sum(exampleState[1:2:end] - exampleState[2:2:end]))
 
