@@ -1,24 +1,32 @@
 # Fermions.jl - Create and Analyse Models of Interacting Electrons
  
 ## What is this?
-**Fermions.jl** is a Julia library for designing and analysing second-quantised many-particle Hamiltonians of electrons, potentially interacting with each other. The main point in designing this library is to abstract away the detailed task of writing matrices for many-body Hamiltonians and operators (for correlations functions) with exponentially large sizes; all operators (including Hamiltonians) can be specified using symbols, and the library then provides functions for diagonalising such Hamiltonians and computing observables within the states.
-<details>
-  <summary><b>What are second-quantised operators?</b></summary>
-  Second quantised operators are a convenient way of writing many-body Hamiltonians. As an example, we wish to design the Hamiltonian of a single electron hopping across a 1D chain of lattice sites labelled as $i=1$, $i=2$, $i=3$ and so on. The system is such that the electron can only hop on to the nearest-neighbour sites starting from any given site: $i\to i+1$, $i\to i-1$. In order to hop from, say, $i=1$ to $i=2$, the electron must first be _annihilated_ at the site $i=1$ and then _created_ at $i=2$. The creation process is represented by the operator $c^\dagger_1$ (1 representing the site index of the location of the operation), while the annihilation process is represented by $c_2$, the total process being the product of both process: $c^\dagger_1 c_2$. Of course, the opposite process can also happen - the electron can also hop from $i=2$ to $i=1$, so that the total second-quantised Hamiltonian for the dynamics involving sites 1 and 2 is 
-$$c^\dagger_1 c_2 + c^\dagger_2 c_1~.$$
-Now, the indices 1 and 2 can be represented by any consecutive indices $i$ and $i+1$, leading to the so-called tight-binding Hamiltonian in 1-dimensions:
-$$H_\mathrm{TB} = \sum_{i} \left(c^\dagger_i c_{i+1} + c^\dagger_{i+1} c_i\right)$$
-</details>
+**Fermions.jl** is a toolkit for designing and analysing second-quantised many-particle Hamiltonians of electrons, potentially interacting with each other. The main point in designing this library is to abstract away the detailed task of writing matrices for many-body Hamiltonians and operators (for correlations functions) with exponentially large sizes; all operators (including Hamiltonians) can be specified using symbols, and the library then provides functions for diagonalising such Hamiltonians and computing observables within the states. (In case you are not accustomed to using second-quantised operators, check [this brief explanation](#a-brief-explanation-of-second-quantised-operators-for-the-uninitiated).)
+
+## Installation
+The system must have a running Julia installation in order to use fermions.jl:
+```console
+### install Julia on Unix-ish systems
+$ curl -fsSL https://install.julialang.org | sh
+
+### install Julia on windows
+> winget install julia -s msstore
+```
+Once a running Julia environment is available, start the Julia REPL by running `julia` from a terminal, and run the following commands to install the fermions.jl library:
+```julia
+julia> import Pkg
+julia> Pkg.add(url="https://github.com/abhirup-m/fermions.jl")
+```
 
 # An Illustrative Example: Tight-Binding Model in One Dimension
-This notebook demonstrates the typical kind of calculations that are possible using the fermions.jl library. The model considered here is a prototypical one, involving spinless electrons hopping on a 1D lattice, with open boundary conditions (the electrons cannot hop beyond the left and right edges of the chain).
+This write-up demonstrates the typical kind of calculations that are possible using the fermions.jl library. The model considered here is a prototypical one, involving spinless electrons hopping on a 1D lattice, with open boundary conditions (the electrons cannot hop beyond the left and right edges of the chain).
 
 <img style="width: 100%;" src="examples/tbm1D.svg"/><br>*Schematic picture of the model being considered here. Circles represent lattice sites and arrows represent electron hopping processes across sites.*
 
 The Hamiltonian of the model is very simple; there are only two kinds of processes - one that starts from a lattice site $i$ and goes to the site next to it ($i+1$), and another one that goes to the site before it ($i-1$). In terms of operators, the Hamiltonian can be written as
 $$H = \sum_i \left(c^\dagger_i c_{i+1} + c^\dagger_{i+1}c_i\right)~.$$
 
-In this notebook, we will now show how to accomplish the following:
+In this write-up, we will now show how to accomplish the following:
 
 - Define the above Hamiltonian and diagonalise it to obtain the spectrum.
 
@@ -98,15 +106,7 @@ function TightBindHamiltonian(numSites)
 end
 ```
 
-
-
-
-    TightBindHamiltonian (generic function with 1 method)
-
-
-
 ## Calculating Correlations: Local Probability Distribution
-
 
 Correlations are expectation values of observable operators, computed in the ground state: $\langle\Psi_\mathrm{gs}|\hat O|\Psi_\mathrm{gs}\rangle$. Any such expectation value can be calculated using the function `GenCorrelation(state, operator)`, where `state` can be one of the eigenstates (where we want to compute the correlation), and `operator` has to be constructed in the same way as the Hamiltonian.
 
@@ -217,3 +217,11 @@ p = Plots.plot(freqArr, specfunc, thickness_scaling=1.5, linewidth=2, legend=fal
 display(p)
 ```
 ![](examples/output_15_0.svg)
+
+## A Brief explanation of second-quantised operators
+The entire library is built on the idea of using second-quantisation to study many-body Hamiltonians, so a discussion of that is certainly pertinent. Second quantised operators are a convenient way of writing many-body Hamiltonians. This library is only concerned with electrons; these are particles whose states must be antisymmetric with respect to an exchange of the particles. For example, a state of electrons at positions 1 and 2 has to be $|1,2\rangle - |2, 1\rangle$. In order to avoid this clumsy notation, we introduce creation and annihilation operators $c^\dagger_\nu$ and $c_\nu$, which carry the property of antisymmetry within themselves. The two operators, respectively, create and annihilate an electron in the state described by the quantum number $\nu$, which can be the position or momentum, among others; they satisfy $c_1 c_2 = -c_2 c_1$, allowing us to write the above complicated state simply as $c^\dagger_1 c^\dagger_2|0\rangle$.
+
+As an example, we wish to design the Hamiltonian of a single electron hopping across a 1D chain of lattice sites labelled as $i=1$, $i=2$, $i=3$ and so on. The system is such that the electron can only hop on to the nearest-neighbour sites starting from any given site: $i\to i+1$, $i\to i-1$. In order to hop from, say, $i=1$ to $i=2$, the electron must first be _annihilated_ at the site $i=1$ and then _created_ at $i=2$. The creation process is represented by the operator $c^\dagger_1$ (1 representing the site index of the location of the operation), while the annihilation process is represented by $c_2$, the total process being the product of both process: $c^\dagger_1 c_2$. Of course, the opposite process can also happen - the electron can also hop from $i=2$ to $i=1$, so that the total second-quantised Hamiltonian for the dynamics involving sites 1 and 2 is 
+$$c^\dagger_1 c_2 + c^\dagger_2 c_1~.$$
+Now, the indices 1 and 2 can be represented by any consecutive indices $i$ and $i+1$, leading to the so-called tight-binding Hamiltonian in 1-dimensions:
+$$H_\mathrm{TB} = \sum_{i} \left(c^\dagger_i c_{i+1} + c^\dagger_{i+1} c_i\right)$$
