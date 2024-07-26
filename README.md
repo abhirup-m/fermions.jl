@@ -13,7 +13,7 @@ $$H_\mathrm{TB} = \sum_{i} \left(c^\dagger_i c_{i+1} + c^\dagger_{i+1} c_i\right
 # An Illustrative Example: Tight-Binding Model in One Dimension
 This notebook demonstrates the typical kind of calculations that are possible using the fermions.jl library. The model considered here is a prototypical one, involving spinless electrons hopping on a 1D lattice, with open boundary conditions (the electrons cannot hop beyond the left and right edges of the chain).
 
-<img style="width: 750px" src="examples/tbm1D.svg"/>
+<img style="width: 100%;" src="examples/tbm1D.svg"/><br>*Schematic picture of the model being considered here. Circles represent lattice sites and arrows represent electron hopping processes across sites.*
 
 The Hamiltonian of the model is very simple; there are only two kinds of processes - one that starts from a lattice site $i$ and goes to the site next to it ($i+1$), and another one that goes to the site before it ($i-1$). In terms of operators, the Hamiltonian can be written as
 $$H = \sum_i \left(c^\dagger_i c_{i+1} + c^\dagger_{i+1}c_i\right)~.$$
@@ -29,8 +29,6 @@ In this notebook, we will now show how to accomplish the following:
 - Calculate other useful quantities such as the entanglement of a region of space and the spectral function. 
 
 ## Importing Packages
-
-
 ```julia
 using fermions # Importing fermions.jl library
 using Plots, Measures # Importing tools for plotting
@@ -38,14 +36,11 @@ Plots.theme(:dark)
 ```
 
 ## Defining Basis States
-
-
 Most applications of this libray require us to define a choice of basis states. The most convenient basis for us is the real space basis, consisting of states such `[1, 0, 1, 1, ..., 0, 1]`, where each number in the vector can be 0 or 1, and the $i^\mathrm{th}$ number represents whether the $i^\mathrm{th}$ lattice site is occupied(`1`) or unoccupied(`0`). Within the library, we define the basis states using the function BasisStates:
 ```
 basis = fermions.BasisStates(numSites, occupancy)
 ```
 Here, the first argument `numSites` is an `Int` that represents the number of lattice sites that must be taken into account while creating the basis, while the second (optional) argument `occupancy` is another `Int` which represents the number of occupied particles in the basis states. For example, if we choose `basis = fermions.BasisStates(2, 1)`, that will return the basis states involving two lattice sites and one electron occupying those sites, leading to the basis `[1, 0], [0, 1]`.
-
 
 ```julia
 numSites = 2 # number of lattice sites
@@ -139,6 +134,7 @@ distribution_mid = [fermions.GenCorrelation(eigvecs[div(numSites, 2)], operator)
 Plots.scatter([distribution_low, distribution_mid], thickness_scaling=1.4, linewidth=3, legend=true,
         xlabel="odd lattice sites", ylabel="probability distribution", labels=["ground state" "excited state"], margin=-1mm)
 ```
+![](examples/output_9_0.svg)
 
 ## Real-space Entanglement
 
@@ -154,6 +150,7 @@ SEE = [fermions.vnEntropy(eigvecs[1], indices) for indices in subsystemIndices]
 Plots.plot(SEE, thickness_scaling=1.4, linewidth=3, legend=false,
         xlabel="lattice site", ylabel="entanglement entropy", margin=-1mm)
 ```
+![](examples/output_11_0.svg)
 
 ## Finite Temperature Calculations: Local Probability Distribution as a Function of Temperature
 
@@ -177,6 +174,7 @@ Plots.plot(1 ./ invTempRange, [leftOccAverage, centerOccAverage];
     xaxis=:log10, xlabel="temp. / \$\\Delta E\$", ylabel="local occupancy", 
     labels=["left edge" "center"], leftmargin=-5mm, bottommargin=-3mm)
 ```
+![](examples/output_13_0.svg)
 
 ## Spectral Function
 
@@ -218,3 +216,4 @@ p = Plots.plot(freqArr, specfunc, thickness_scaling=1.5, linewidth=2, legend=fal
     xlabel="frequency \$\\omega\$", ylabel="spectral function\$", margin=-2mm)
 display(p)
 ```
+![](examples/output_15_0.svg)
