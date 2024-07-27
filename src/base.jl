@@ -15,10 +15,16 @@ function roundTo(
     )
     return round(val, digits=trunc(Int, -log10(tolerance)))
 end
+export roundTo
 
 
 """
-    BasisStates(numLevels, totOccReq, magzReq, localCriteria)
+    BasisStates(
+        numLevels,
+        totOccReq,
+        magzReq,
+        localCriteria,
+)
 
 Creates a set of basis states for the `numLevels` Fock states, having the
 required total occupancy and magnetization, and subject to any criteria
@@ -71,6 +77,7 @@ function BasisStates(
     end
     return basis
 end
+export BasisStates
 
 
 """
@@ -118,6 +125,7 @@ function BasisStates(
     end
     return BasisStates(numLevels, totOccReq, magzReq, localCriteria)
 end
+export BasisStates
 
 
 """
@@ -149,6 +157,7 @@ function TransformBit(qubit::Bool, operator::Char)
         return 0 + qubit, 0
     end
 end
+export TransformBit
 
 
 """
@@ -220,6 +229,7 @@ function ApplyOperatorChunk(
     end
     return outgoingState
 end
+export ApplyOperatorChunk
 
 
 """
@@ -259,6 +269,7 @@ function ApplyOperator(
 
     return outgoingState
 end
+export ApplyOperator
 
 
 """
@@ -301,6 +312,7 @@ function OperatorMatrix(
     end
     return operatorMatrix
 end
+export OperatorMatrix
 
 
 """
@@ -334,3 +346,4 @@ function StateOverlap(state1::Dict{BitVector,Float64}, state2::Dict{BitVector,Fl
     end
     return overlap
 end
+export StateOverlap
