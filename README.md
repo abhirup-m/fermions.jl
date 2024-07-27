@@ -4,9 +4,11 @@
 
 **Fermions.jl** is a toolkit for designing and analysing second-quantised many-particle Hamiltonians of electrons, potentially interacting with each other. The main point in designing this library is to abstract away the detailed task of writing matrices for many-body Hamiltonians and operators (for correlations functions) with large Hilbert spaces; **all operators (including Hamiltonians) can be specified using predefined symbols, and the library then provides functions for diagonalising such Hamiltonians and computing observables within the states**. (In case you are not accustomed to using second-quantised operators, check [this brief explanation](#a-brief-explanation-of-second-quantised-operators-for-the-uninitiated).)
 
-This library was borne out of a need to numerically construct and solve fermionic Hamiltonians in the course of my doctoral research. While there are similar julia libraries such as [Marco-Di-Tullio/Fermionic.jl](https://github.com/Marco-Di-Tullio/Fermionic.jl) and [qojulia/QuantumOptics.jl](https://github.com/qojulia/QuantumOptics.jl), **fermions.jl is much more intuitive** since it works directly on predefined basis states and allows defining arbitrary fermionic operators and quantum mechanical states. **No complicated abstract classes and objects are needed** to use this library; everything is defined purely in terms of simple collections such as dictionaries, vectors and tuples. This makes the entire process transparent and intuitive.
-
 ## Neat features
+
+This library was borne out of a need to numerically construct and solve fermionic Hamiltonians in the course of my doctoral research. While there are similar julia libraries such as [Marco-Di-Tullio/Fermionic.jl](https://github.com/Marco-Di-Tullio/Fermionic.jl) and [qojulia/QuantumOptics.jl](https://github.com/qojulia/QuantumOptics.jl), **fermions.jl is much more intuitive** since it works directly on predefined basis states and allows defining arbitrary fermionic operators and quantum mechanical states. **There is no need to interact with complicated and abstract classes and objects** in order to use this library; everything is defined purely in terms of simple datastructures such as dictionaries, vectors and tuples. This makes the entire process transparent and intuitive.
+
+These are some of the useful features of this toolkit:
 
 - High-level of freedom in constructing fermionic Hamiltonians. All Hamiltonians that can be represented as a tensor product of 2-dimensional fermionic Fock-space operators can be modelled using fermions.jl. This covers all purely-electronic Hamiltonians, for example.
 
@@ -47,7 +49,7 @@ julia> Pkg.add(url="https://github.com/abhirup-m/fermions.jl")
 ```
 
 # Quick-Start: Tight-Binding Model in One Dimension
-This write-up demonstrates the typical kind of calculations that are possible using the fermions.jl library. The model considered here is a prototypical one, involving spinless electrons hopping on a 1D lattice, with open boundary conditions (the electrons cannot hop beyond the left and right edges of the chain).
+This write-up is designed to show you very quickly how to start using this toolkit. It demonstrates the typical kind of calculations that are possible using the fermions.jl library. The model considered here is a prototypical one, involving spinless electrons hopping on a 1D lattice, with open boundary conditions (the electrons cannot hop beyond the left and right edges of the chain).
 
 <img style="width: 100%;" src="examples/images/tbm1D.svg"/><br>*Schematic picture of the model being considered here. Circles represent lattice sites and arrows represent electron hopping processes across sites.*
 
