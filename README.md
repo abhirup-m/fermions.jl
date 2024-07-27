@@ -1,4 +1,4 @@
-# Fermions.jl - Create and Analyse Models of Interacting Electrons
+# Fermions.jl - Toolkit for Interacting Electrons
  
 ![](examples/images/sshEdge.svg)
 
