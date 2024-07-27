@@ -8,16 +8,37 @@ julia> fermions.roundTo(1.122323, 1e-3)
 1.122
 ```
 """
-function roundTo(val::Float64, tolerance::Float64)
+function roundTo(
+        val::Float64, 
+        tolerance::Float64
+    )
     return round(val, digits=trunc(Int, -log10(tolerance)))
 end
 
 
-function BasisStates(numLevels::Int64, totOcc::Int64; magzCriteria::Function=x -> true, localCriteria::Function=x -> true)
+function BasisStates(
+        numLevels::Int64, 
+        totOccReq::Vector{Int64},
+        magzReq::Vector{Int64},
+        localCriteria::Function
+    )
+    @assert !isempty(totOccReq) && !isempty(magzReq)
     basis = Dict{BitVector,Float64}[]
-    configs = Combinatorics.multiset_permutations([fill(1, totOcc); fill(0, numLevels - totOcc)], numLevels) |> collect
-    for config in configs
-        if magzCriteria(config) && localCriteria(config)
+    for decimalNum in 0:2^numLevels-1
+        config = digits(decimalNum, base=2, pad=numLevels) |> reverse
+        if !isempty(totOccReq)
+            totOcc = sum(config)
+            if totOcc ∉ totOccReq
+                continue
+            end
+        end
+        if !isempty(magzReq)
+            magz = sum(config[1:2:end]) - sum(config[2:2:end])
+            if magz ∉ magzReq
+                continue
+            end
+        end
+        if localCriteria(config)
             push!(basis, Dict(BitVector(config) => 1.0))
         end
     end
@@ -25,15 +46,23 @@ function BasisStates(numLevels::Int64, totOcc::Int64; magzCriteria::Function=x -
 end
 
 
-function BasisStates(numLevels::Int64; totOccCriteria::Function=(x, N) -> true, magzCriteria::Function=x -> true, localCriteria::Function=x -> true)
-    basis = Dict{BitVector,Float64}[]
-    for decimalNum in 0:2^numLevels-1
-        config = digits(decimalNum, base=2, pad=numLevels) |> reverse
-        if totOccCriteria(config, numLevels) && magzCriteria(config) && localCriteria(config)
-            push!(basis, Dict(BitVector(config) => 1.0))
-        end
+function BasisStates(
+        numLevels::Int64;
+        totOccReq::Union{Vector{Int64}, Int64}=nothing,
+        magzReq::Union{Vector{Int64}, Int64}=nothing,
+        localCriteria::Function=x -> true
+    )
+    if isnothing(totOccReq)
+        totOccReq = collect(0, numLevels)
+    elseif typeof(totOccReq) == Int64
+        totOccReq = [totOccReq]
     end
-    return basis
+    if isnothing(magzReq)
+        magzReq = collect(numLevels - div(numLevels, 2), -div(numLevels, 2))
+    elseif typeof(magzReq) == Int64
+        magzReq = [magzReq]
+    end
+    return BasisStates(numLevels, totOccReq, magzReq, localCriteria)
 end
 
 
