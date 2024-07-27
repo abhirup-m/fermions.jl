@@ -1,7 +1,6 @@
 module fermions
 
-using ProgressMeter
-using LinearAlgebra
+using ProgressMeter, LinearAlgebra, Combinatorics
 
 include("base.jl")
 include("eigen.jl")
@@ -11,4 +10,4 @@ include("reverseUnitaries.jl")
 include("stateExpansion.jl")
 include("iterativeDiag.jl")
 
-end # module fermions
+end

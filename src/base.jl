@@ -1,23 +1,14 @@
-using Combinatorics
-
 """
-Returns a set of basis states in the form
-[[0,0,...,0],
- [0,0,...,1],
-       .
-       .
-       .
- [1,1,...,1]
-],
-where each inner vector represents a configuration of the electronic fock states.
-Optionally accepts a parameter totOccupancy that restricts the basis states to only
-those with the specified total occupancy, and a parameter totSpin that does the same
-but for a specified total magnetisation.
+    roundTo(val, tolerance)
+
+Round the provided float to the specified tolerance.
+# Examples
+```jldoctest
+julia> fermions.roundTo(1.122323, 1e-3)
+1.122
+```
 """
-
-
-# rounds off a given float to the desired tolerance
-function roundTo(val, tolerance)
+function roundTo(val::Float64, tolerance::Float64)
     return round(val, digits=trunc(Int, -log10(tolerance)))
 end
 
