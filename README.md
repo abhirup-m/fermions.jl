@@ -2,7 +2,7 @@
 
 # Fermions.jl - Toolkit for Interacting Electrons
 
- [![Run tests](https://github.com/abhirup-m/fermions.jl/actions/workflows/runtest.yml/badge.svg)](https://github.com/abhirup-m/fermions.jl/actions/workflows/runtest.yml)
+ [![Run tests](https://github.com/abhirup-m/fermions.jl/actions/workflows/runtest.yml/badge.svg)](https://github.com/abhirup-m/fermions.jl/actions/workflows/runtest.yml) [![Docs](https://github.com/abhirup-m/fermions.jl/actions/workflows/builddocs.yml/badge.svg)](https://github.com/abhirup-m/fermions.jl/actions/workflows/builddocs.yml)
 
 **Fermions.jl** is a toolkit for designing and analysing second-quantised many-particle Hamiltonians of electrons, potentially interacting with each other. The main point in designing this library is to abstract away the detailed task of writing matrices for many-body Hamiltonians and operators (for correlations functions) with large Hilbert spaces; **all operators (including Hamiltonians) can be specified using predefined symbols, and the library then provides functions for diagonalising such Hamiltonians and computing observables within the states**. (In case you are not accustomed to using second-quantised operators, check [this brief explanation](#a-brief-explanation-of-second-quantised-operators-for-the-uninitiated).)
 
