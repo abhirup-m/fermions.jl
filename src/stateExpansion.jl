@@ -8,6 +8,7 @@ function stateExpansion2CK(state::Dict{BitVector,Float64}, sectors::String)
         state = Dict{keytype(state),valtype(state)}([key; [1, 1, 1, 1, 0, 0, 0, 0]] => val for (key, val) in state)
     end
 end
+export stateExpansion2CK
 
 
 function stateExpansion1CK(state::Dict{BitVector,Float64}, sectors::String)
@@ -21,3 +22,4 @@ function stateExpansion1CK(state::Dict{BitVector,Float64}, sectors::String)
     end
     return state
 end
+export stateExpansion1CK

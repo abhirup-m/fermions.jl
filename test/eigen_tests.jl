@@ -1,7 +1,7 @@
 @testset "Spectrum" begin
-    eps = rand()
-    hop_t = rand()
-    U = rand()
+    eps = 1.281
+    hop_t = 0.284
+    U = 3.132
     @testset "sector=$((n, m))" for (n, m) in [(0, 0), (1, 1), (1, -1), (2, 2), (2, 0), (2, -2), (3, 1), (3, -1), (4, 0)]
         basis = BasisStates(4; totOccReq=n, magzReq=m)
         operatorList = HubbardDimerOplist(eps, U, hop_t)
@@ -25,8 +25,8 @@ end
 
 @testset "Ground States" begin
     basisStates = BasisStates(4)
-    hop_t = abs(rand())
-    U = abs(rand())
+    hop_t = 1.232
+    U = 2.347
     eps = -U / 2
     Δ = (U^2 + 16 * hop_t^2)^0.5
     a1 = 0.5 * √((Δ - U) / Δ)
@@ -46,7 +46,7 @@ end
 
 @testset "Degenerate Ground States" begin
     basisStates = BasisStates(4)
-    eps = -abs(rand())
+    eps = -1.541
     hop_t = 0
     U = -2 * eps
     operatorList = HubbardDimerOplist(eps, U, hop_t)

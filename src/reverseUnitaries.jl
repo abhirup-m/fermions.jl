@@ -8,6 +8,7 @@ function kondoOperators(momIndices::NTuple{2,Integer}, multiplier::Float64)
         ("+-+-", [2, 1, momIndices[1], momIndices[2] + 1], 0.5 * multiplier),
     ]
 end
+export kondoOperators
 
 
 function unitaries2CK(alpha::Float64, num_entangled::Integer, sectors::String)
@@ -60,6 +61,7 @@ function unitaries2CK(alpha::Float64, num_entangled::Integer, sectors::String)
     end
     return unitaryTerms
 end
+export unitaries2CK
 
 
 function unitaries1CK(alpha::Float64, num_entangled::Integer, sectors::String)
@@ -86,3 +88,4 @@ function unitaries1CK(alpha::Float64, num_entangled::Integer, sectors::String)
     end
     return unitaryTerms
 end
+export unitaries1CK

@@ -134,9 +134,9 @@ end
 end
 
 @testset "OperatorMatrix" begin
-    eps = rand()
-    hop_t = rand()
-    U = rand()
+    eps = 1.281
+    hop_t = 0.284
+    U = 3.132
     operatorList = HubbardDimerOplist(eps, U, hop_t)
     @testset "sector=$((n, m))" for (n, m) in [(0, 0), (1, 1), (1, -1), (2, 2), (2, 0), (2, -2), (3, 1), (3, -1), (4, 0)]
         basisStates = BasisStates(4; totOccReq=n, magzReq=m)
