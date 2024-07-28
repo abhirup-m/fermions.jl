@@ -18,12 +18,16 @@ julia> GenCorrelation(state, operator)
 -0.5
 ```
 """
-function GenCorrelation(state::Dict{BitVector,Float64}, operator::Vector{Tuple{String,Vector{Int64},Float64}})
+function GenCorrelation(
+        state::Dict{BitVector,Float64},
+        operator::Vector{Tuple{String,Vector{Int64},Float64}}
+    )
     # state is of the form {|1>: c_1, |2>: c_2, ... |n>: c_n}.
     intermStates = fetch.([Threads.@spawn ApplyOperator([term], state) for term in operator])
     correlation = sum(fetch.([Threads.@spawn StateOverlap(state, intermState) for intermState in intermStates]))
     return correlation / sum(values(state) .^ 2)
 end
+export GenCorrelation
 
 
 """
@@ -45,7 +49,11 @@ julia> reducedDM(state, [1])
  0.0  0.5
 ```
 """
-function reducedDM(state::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[])
+function ReducedDM(
+        state::Dict{BitVector,Float64},
+        reducingIndices::Vector{Int64};
+        reducingConfigs::Vector{BitVector}=BitVector[]
+    )
 
     # indices of the degrees of freedom that will not be summed over.
     nonReducingIndices = setdiff(1:length(collect(keys(state))[1]), reducingIndices)
@@ -92,10 +100,11 @@ function reducedDM(state::Dict{BitVector,Float64}, reducingIndices::Vector{Int64
 
     return reducedDMatrix ./ sum(diag(reducedDMatrix))
 end
+export ReducedDM
 
 
 """
-    vnEntropy(state, reducingIndices)
+    VonNEntropy(state, reducingIndices)
 
 Calculate entanglement entropy of the subsystem defined by
 `reducingIndices`.
@@ -107,11 +116,16 @@ Dict{BitVector, Float64} with 2 entries:
   [1, 0] => 0.5
   [0, 1] => -0.5
 
-julia> vnEntropy(state, [1])
+julia> VonNEntropy(state, [1])
 0.6931471805599453
 ```
 """
-function vnEntropy(state::Dict{BitVector,Float64}, reducingIndices::Vector{Int64}; reducingConfigs::Vector{BitVector}=BitVector[], tolerance=1e-10, schmidtGap=false)
+function VonNEntropy(
+        state::Dict{BitVector,Float64},
+        reducingIndices::Vector{Int64};
+        reducingConfigs::Vector{BitVector}=BitVector[],
+        tolerance=1e-10, schmidtGap=false
+    )
     reducedDMatrix = reducedDM(state, reducingIndices; reducingConfigs=reducingConfigs)
     eigenvalues = eigvals(0.5 * (reducedDMatrix + reducedDMatrix'))
     eigenvalues[eigenvalues.<tolerance] .= 0
@@ -125,10 +139,11 @@ function vnEntropy(state::Dict{BitVector,Float64}, reducingIndices::Vector{Int64
         return -sum(eigenvalues .* log.(replace(eigenvalues, 0 => 1e-10))), largestEigvals[end] - largestEigvals[end-1]
     end
 end
+export VonNEntropy
 
 
 """
-    mutInfo(state, reducingIndices)
+    MutInfo(state, reducingIndices)
 
 Calculate mutual information between the subsystems defined by
 the tuple `reducingIndices`.
@@ -140,11 +155,11 @@ Dict{BitVector, Float64} with 2 entries:
   [0, 1, 0] => -0.5
   [1, 0, 1] => 0.5
 
-julia> mutInfo(state, ([1], [2]))
+julia> MutInfo(state, ([1], [2]))
 0.6931471805599453
 ```
 """
-function mutInfo(
+function MutInfo(
     state::Dict{BitVector,Float64},
     reducingIndices::Tuple{Vector{Int64},Vector{Int64}};
     reducingConfigs::Tuple{Vector{BitVector},Vector{BitVector}}=(BitVector[], BitVector[])
@@ -155,10 +170,11 @@ function mutInfo(
     SEE_AB = Threads.@spawn vnEntropy(state, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
     return sum([1, 1, -1] .* fetch.([SEE_A, SEE_B, SEE_AB]))
 end
+export MutInfo
 
 
 """
-    tripartiteInfo(state, reducingIndices)
+    TripartiteInfo(state, reducingIndices)
 
 Calculate tripartite information between the subsystems defined by
 the 3-tuple `reducingIndices`.
@@ -170,11 +186,11 @@ Dict{BitVector, Float64} with 2 entries:
   [1, 0, 1, 0] => 0.5
   [0, 1, 0, 1] => -0.5
 
-julia> tripartiteInfo(state, ([1], [2], [3]))
+julia> TripartiteInfo(state, ([1], [2], [3]))
 0.6931471805599453
 ```
 """
-function tripartiteInfo(
+function TripartiteInfo(
     groundState::Dict{BitVector,Float64},
     reducingIndices::NTuple{3,Vector{Int64}};
     reducingConfigs::NTuple{3,Vector{BitVector}}=(BitVector[], BitVector[], BitVector[])
@@ -186,6 +202,7 @@ function tripartiteInfo(
     I2_A_BC = Threads.@spawn mutInfo(groundState, (reducingIndices[1], BC_indices); reducingConfigs=(reducingConfigs[1], BC_configs))
     return sum([1, 1, -1] .* fetch.([I2_A_B, I2_A_C, I2_A_BC]))
 end
+export TripartiteInfo
 
 
 """
@@ -233,6 +250,7 @@ function ThermalAverage(
 )
     return sum(fetch.([Threads.@spawn exp(-invTemp * energy) * GenCorrelation(state, operator) for (state, energy) in zip(eigenStates, eigenVals)])) / sum(exp.(-invTemp .* eigenVals))
 end
+export ThermalAverage
 
 
 """
@@ -308,6 +326,7 @@ function SpecFunc(
     end
     return specFunc
 end
+export SpecFunc
 
 
 """
@@ -347,3 +366,4 @@ function SpecFunc(
 
     return SpecFunc(minimalEigVals, minimalEigVecs, probe, probeDag, freqArray, broadening; gsIndex=1)
 end
+export SpecFunc

@@ -53,6 +53,7 @@ function ClassifyBasis(
         return classifiedBasis, classifiedEnergies
     end
 end
+export ClassifyBasis
 
 
 """
@@ -94,6 +95,7 @@ function TransformState(
     end
     return transformedState
 end
+export TransformState
 
 
 """
@@ -150,6 +152,7 @@ function Spectrum(
                    for vector in eachcol(eigenVecs)]
     return eigenVals, eigenStates
 end
+export Spectrum
 
 
 """
@@ -210,3 +213,4 @@ function Spectrum(
         return allEigvals, allEigvecs
     end
 end
+export Spectrum
