@@ -23,13 +23,13 @@
 end
 
 
-@testset "roundTo" begin
-    @test roundTo(1, 1e-10) == 1
-    @test roundTo(1 + 1e-11, 1e-10) == 1
-    @test roundTo(1e-11, 1e-10) == 0
-    @test roundTo(1e-10, 1e-10) == 1e-10
-    @test roundTo(-1e-10, 1e-10) == -1e-10
-    @test roundTo(0, 1e-10) == 0
+@testset "RoundTo" begin
+    @test RoundTo(1, 1e-10) == 1
+    @test RoundTo(1 + 1e-11, 1e-10) == 1
+    @test RoundTo(1e-11, 1e-10) == 0
+    @test RoundTo(1e-10, 1e-10) == 1e-10
+    @test RoundTo(-1e-10, 1e-10) == -1e-10
+    @test RoundTo(0, 1e-10) == 0
 end
 
 
@@ -139,7 +139,7 @@ end
     U = rand()
     operatorList = HubbardDimerOplist(eps, U, hop_t)
     @testset "sector=$((n, m))" for (n, m) in [(0, 0), (1, 1), (1, -1), (2, 2), (2, 0), (2, -2), (3, 1), (3, -1), (4, 0)]
-        basisStates = BasisStates(4; totOccCriteria=(x, N) -> sum(x) == n, magzCriteria=x -> sum(x[1:2:end]) - sum(x[2:2:end]) == m)
+        basisStates = BasisStates(4; totOccReq=n, magzReq=m)
         if (n,m) == (2,0)
             @test Set([collect(keys(b))[1] for b in basisStates]) == Set([[0, 0, 1, 1], [0, 1, 1, 0], [1, 0, 0, 1], [1, 1, 0, 0]])
             basisStates = [Dict(BitVector([1, 0, 0, 1]) => 1.0), Dict(BitVector([0, 1, 1, 0]) => 1.0), Dict(BitVector([1, 1, 0, 0]) => 1.0), Dict(BitVector([0, 0, 1, 1]) => 1.0)]

@@ -21,19 +21,19 @@ end
 
     @testset "θ = $(theta)" for theta in rand(100) .* 2π
         state = Dict(BitVector([1, 0]) => cos(theta), BitVector([0, 1]) => sin(theta))
-        SEE_1, schmidtGap_1 = vnEntropy(state, [1], schmidtGap=true)
-        SEE_2, schmidtGap_2 = vnEntropy(state, [2], schmidtGap=true)
+        SEE_1, schmidtGap_1 = VonNEntropy(state, [1], schmidtGap=true)
+        SEE_2, schmidtGap_2 = VonNEntropy(state, [2], schmidtGap=true)
         @test schmidtGap_1 ≈ schmidtGap_2 ≈ abs(cos(theta)^2 - sin(theta)^2)
         @test SEE_1 ≈ SEE_2 ≈ -cos(theta)^2 * log(cos(theta)^2) - sin(theta)^2 * log(sin(theta)^2)
     end
 
     coeffs = rand(3)
     state = Dict(BitVector([1, 0, 1]) => coeffs[1], BitVector([1, 1, 0]) => coeffs[2], BitVector([0, 1, 1]) => coeffs[3])
-    SEE_1, schmidtGap_1 = vnEntropy(state, [1], schmidtGap=true)
-    SEE_2, schmidtGap_2 = vnEntropy(state, [2], schmidtGap=true)
-    SEE_3, schmidtGap_3 = vnEntropy(state, [3], schmidtGap=true)
-    SEE_12, schmidtGap_12 = vnEntropy(state, [1, 2], schmidtGap=true)
-    I2_12 = mutInfo(state, ([1], [2]))
+    SEE_1, schmidtGap_1 = VonNEntropy(state, [1], schmidtGap=true)
+    SEE_2, schmidtGap_2 = VonNEntropy(state, [2], schmidtGap=true)
+    SEE_3, schmidtGap_3 = VonNEntropy(state, [3], schmidtGap=true)
+    SEE_12, schmidtGap_12 = VonNEntropy(state, [1, 2], schmidtGap=true)
+    I2_12 = MutInfo(state, ([1], [2]))
     coeffs ./= sum(coeffs .^ 2)^0.5
     @test schmidtGap_12 ≈ schmidtGap_3 ≈ abs(coeffs[1]^2 + coeffs[3]^2 - coeffs[2]^2)
     @test SEE_1 ≈ -(coeffs[1]^2 + coeffs[2]^2) * log(coeffs[1]^2 + coeffs[2]^2) - (coeffs[3]^2) * log(coeffs[3]^2)
@@ -42,7 +42,7 @@ end
     @test I2_12 ≈ SEE_1 + SEE_2 - SEE_12
 
     state = Dict(BitVector([1, 0, 1]) => rand(), BitVector([0, 1, 1]) => rand())
-    SEE, schmidtGap = vnEntropy(state, [3], schmidtGap=true)
+    SEE, schmidtGap = VonNEntropy(state, [3], schmidtGap=true)
     @test schmidtGap ≈ 1
     @test SEE ≈ 0
 end
@@ -52,7 +52,7 @@ end
 
     @testset "θ = $(theta)" for theta in rand(100) .* 2π
         state = Dict(BitVector(fill(0, 4)) => cos(theta), BitVector(fill(1, 4)) => sin(theta))
-        I3 = tripartiteInfo(state, ([1], [2], [3]))
+        I3 = TripartiteInfo(state, ([1], [2], [3]))
         @test I3 ≈ -cos(theta)^2 * log(cos(theta)^2) - sin(theta)^2 * log(sin(theta)^2)
     end
 end

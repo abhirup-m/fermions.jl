@@ -126,7 +126,7 @@ function VonNEntropy(
         reducingConfigs::Vector{BitVector}=BitVector[],
         tolerance=1e-10, schmidtGap=false
     )
-    reducedDMatrix = reducedDM(state, reducingIndices; reducingConfigs=reducingConfigs)
+    reducedDMatrix = ReducedDM(state, reducingIndices; reducingConfigs=reducingConfigs)
     eigenvalues = eigvals(0.5 * (reducedDMatrix + reducedDMatrix'))
     eigenvalues[eigenvalues.<tolerance] .= 0
     eigenvalues ./= sum(eigenvalues)
@@ -165,9 +165,9 @@ function MutInfo(
     reducingConfigs::Tuple{Vector{BitVector},Vector{BitVector}}=(BitVector[], BitVector[])
 )
     combinedConfigs = vec([[c1; c2] for (c1, c2) in Iterators.product(reducingConfigs...)])
-    SEE_A = Threads.@spawn vnEntropy(state, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
-    SEE_B = Threads.@spawn vnEntropy(state, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
-    SEE_AB = Threads.@spawn vnEntropy(state, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
+    SEE_A = Threads.@spawn VonNEntropy(state, reducingIndices[1]; reducingConfigs=reducingConfigs[1])
+    SEE_B = Threads.@spawn VonNEntropy(state, reducingIndices[2]; reducingConfigs=reducingConfigs[2])
+    SEE_AB = Threads.@spawn VonNEntropy(state, vcat(reducingIndices...); reducingConfigs=combinedConfigs)
     return sum([1, 1, -1] .* fetch.([SEE_A, SEE_B, SEE_AB]))
 end
 export MutInfo
@@ -197,9 +197,9 @@ function TripartiteInfo(
 )
     BC_indices = vcat(reducingIndices[2], reducingIndices[3])
     BC_configs = vcat(reducingConfigs[2], reducingConfigs[3])
-    I2_A_B = Threads.@spawn mutInfo(groundState, reducingIndices[[1, 2]]; reducingConfigs=reducingConfigs[[1, 2]])
-    I2_A_C = Threads.@spawn mutInfo(groundState, reducingIndices[[1, 3]]; reducingConfigs=reducingConfigs[[1, 3]])
-    I2_A_BC = Threads.@spawn mutInfo(groundState, (reducingIndices[1], BC_indices); reducingConfigs=(reducingConfigs[1], BC_configs))
+    I2_A_B = Threads.@spawn MutInfo(groundState, reducingIndices[[1, 2]]; reducingConfigs=reducingConfigs[[1, 2]])
+    I2_A_C = Threads.@spawn MutInfo(groundState, reducingIndices[[1, 3]]; reducingConfigs=reducingConfigs[[1, 3]])
+    I2_A_BC = Threads.@spawn MutInfo(groundState, (reducingIndices[1], BC_indices); reducingConfigs=(reducingConfigs[1], BC_configs))
     return sum([1, 1, -1] .* fetch.([I2_A_B, I2_A_C, I2_A_BC]))
 end
 export TripartiteInfo
@@ -302,11 +302,11 @@ function SpecFunc(
     @assert length(eigVals) == length(eigVecs)
 
     if iszero(gsIndex)
-        energyGs = minimum(eigenVals)
+        energyGs = minimum(eigVals)
         groundState = eigVecs[eigVals .== energyGs][1]
     else
         @assert gsIndex ≤ length(eigVals)
-        energyGs = eigenVals[gsIndex]
+        energyGs = eigVals[gsIndex]
         groundState = eigVecs[gsIndex]
     end
 

@@ -3,7 +3,7 @@
     hop_t = rand()
     U = rand()
     @testset "sector=$((n, m))" for (n, m) in [(0, 0), (1, 1), (1, -1), (2, 2), (2, 0), (2, -2), (3, 1), (3, -1), (4, 0)]
-        basis = BasisStates(4; totOccCriteria=(x, N) -> sum(x) == n, magzCriteria=x -> sum(x[1:2:end]) - sum(x[2:2:end]) == m)
+        basis = BasisStates(4; totOccReq=n, magzReq=m)
         operatorList = HubbardDimerOplist(eps, U, hop_t)
         eigvals, eigvecs = Spectrum(operatorList, basis)
         comparisonMatrix = HubbardDimerMatrix(eps, U, hop_t)[(n, m)]
@@ -13,7 +13,8 @@
             v2 = v2[abs.(v2) .> 1e-14]
             if (n,m) == (2, 0) && BitVector([1, 0, 0, 1]) in keys(eigvecs[i]) && BitVector([1, 1, 0, 0]) in keys(eigvecs[i])
                 vals = [eigvecs[i][BitVector([1, 0, 0, 1])], eigvecs[i][BitVector([0, 1, 1, 0])], eigvecs[i][BitVector([1, 1, 0, 0])], eigvecs[i][BitVector([0, 0, 1, 1])]]
-                @test vals ./ eigvecs[i][BitVector([1, 0, 0, 1])] ≈ v2 ./ v2[1]
+                vals = vals[abs.(vals) .> 1e-14]
+                @test vals ./ maximum(abs.(vals)) ≈ v2 ./ maximum(abs.(v2)) || vals ./ maximum(abs.(vals)) ≈ -1 .* v2 ./ maximum(abs.(v2))
             else
                 @test collect(values(eigvecs[i])) ./ collect(values(eigvecs[i]))[1] ≈ v2 ./ v2[1]
             end

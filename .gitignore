@@ -1,4 +1,3 @@
 *.pdf
 data/*
 .ipynb_checkpoints/*
-docs/build/**

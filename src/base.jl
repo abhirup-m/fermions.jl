@@ -1,24 +1,4 @@
 """
-    roundTo(val, tolerance)
-
-Round the provided float to the specified tolerance.
-
-# Examples
-```jldoctest
-julia> fermions.roundTo(1.122323, 1e-3)
-1.122
-```
-"""
-function roundTo(
-        val::Float64, 
-        tolerance::Float64
-    )
-    return round(val, digits=trunc(Int, -log10(tolerance)))
-end
-export roundTo
-
-
-"""
     BasisStates(numLevels, totOccReq, magzReq, localCriteria)
 
 Creates a set of basis states for the `numLevels` Fock states, having the
@@ -359,3 +339,23 @@ function GetSector(
     return ifelse(symmetries == ['N', 'Z'], (totOcc, magz), ifelse(symmetries == ['N'], (totOcc,), (magz,)))
 end
 export GetSector
+
+
+"""
+    roundTo(val, tolerance)
+
+Round the provided float to the specified tolerance.
+
+# Examples
+```jldoctest
+julia> fermions.roundTo(1.122323, 1e-3)
+1.122
+```
+"""
+function RoundTo(
+        val::Union{Int64, Float64}, 
+        tolerance::Float64
+    )
+    return round(val, digits=trunc(Int, -log10(tolerance)))
+end
+export RoundTo
