@@ -1,5 +1,5 @@
-using Test
-using LinearAlgebra, ProgressMeter
+using Test,LinearAlgebra, ProgressMeter
+using fermions
 
 include("testing_helpers.jl")
 include("base_tests.jl")

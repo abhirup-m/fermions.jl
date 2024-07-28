@@ -34,7 +34,6 @@ end
     operatorList = HubbardDimerOplist(eps, U, hop_t)
     eigvals, eigvecs = Spectrum(operatorList, basisStates)
     @test eigvals[1] ≈ 2 * eps + U / 2 - Δ / 2
-    println(eigvecs[1])
     @test Set(keys(eigvecs[1])) == Set([[1, 0, 0, 1], [0, 0, 1, 1], [0, 1, 1, 0], [1, 1, 0, 0]])
     scaledGstate = Dict(k => v / eigvecs[1][[1, 0, 0, 1]] for (k, v) in eigvecs[1])
     @test scaledGstate[[1, 0, 0, 1]] ≈ 1.0
