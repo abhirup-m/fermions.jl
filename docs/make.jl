@@ -1,3 +1,3 @@
 using Documenter, fermions
 
-makedocs(sitename="Fermions.jl - Documentation")
+makedocs(sitename="Fermions.jl")
