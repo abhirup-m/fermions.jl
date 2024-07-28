@@ -45,24 +45,6 @@ function ExpandBasis(
 end
 
 
-function ClassifyBasis(basisStates::Vector{Dict{BitVector,Float64}})
-    classifiedBasis = Dict{Tuple{Int64,Int64},typeof(basisStates)}()
-
-    # Multhreading doesn't help here, already tried!
-    for stateDict in basisStates
-        bstate = collect(keys(stateDict))[1]
-        totOcc = sum(bstate)
-        totMagzArr = sum(bstate[1:2:end]) - sum(bstate[2:2:end])
-        if (totOcc, totMagzArr) ∉ keys(classifiedBasis)
-            classifiedBasis[(totOcc, totMagzArr)] = []
-        end
-        push!(classifiedBasis[(totOcc, totMagzArr)], stateDict)
-    end
-
-    return classifiedBasis
-end
-
-
 function TruncateBasis(newClassifiedBasis, newDiagElementsClassified, retainSize)
     classifiedBasis = typeof(newClassifiedBasis)()
     diagElementsClassified = Dict{keytype(classifiedBasis),Vector{Float64}}()

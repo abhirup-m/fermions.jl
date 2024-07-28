@@ -19,12 +19,7 @@ export roundTo
 
 
 """
-    BasisStates(
-        numLevels,
-        totOccReq,
-        magzReq,
-        localCriteria,
-)
+    BasisStates(numLevels, totOccReq, magzReq, localCriteria)
 
 Creates a set of basis states for the `numLevels` Fock states, having the
 required total occupancy and magnetization, and subject to any criteria
@@ -47,7 +42,7 @@ julia> BasisStates(4, [2], [0], x->sum(x[1:2])==1)
 2-element Vector{Dict{BitVector, Float64}}:
  Dict([0, 1, 1, 0] => 1.0)
  Dict([1, 0, 0, 1] => 1.0)
- ```
+```
 """
 function BasisStates(
         numLevels::Int64, 
@@ -301,11 +296,13 @@ julia> OperatorMatrix(basis, operator)
 """
 function OperatorMatrix(
         basisStates::Vector{Dict{BitVector,Float64}},
-        operator::Vector{Tuple{String,Vector{Int64},Float64}}
+        operator::Vector{Tuple{String,Vector{Int64},Float64}};
+        tolerance::Float64=1e-16,
     )
     operatorMatrix = zeros(length(basisStates), length(basisStates))
-    newStates = fetch.([Threads.@spawn ApplyOperator(operator, incomingState) for incomingState in basisStates])
-    Threads.@threads for incomingIndex in eachindex(newStates)
+    newStates = fetch.([Threads.@spawn ApplyOperator(operator, incomingState; tolerance=tolerance)
+                        for incomingState in basisStates])
+    Threads.@threads for incomingIndex in findall(!isempty, newStates)
         Threads.@threads for outgoingIndex in eachindex(basisStates)
             operatorMatrix[outgoingIndex, incomingIndex] = StateOverlap(basisStates[outgoingIndex], newStates[incomingIndex])
         end
@@ -336,7 +333,10 @@ julia> StateOverlap(state1, state2)
 -0.25
 ```
 """
-function StateOverlap(state1::Dict{BitVector,Float64}, state2::Dict{BitVector,Float64})
+function StateOverlap(
+        state1::Dict{BitVector,Float64}, 
+        state2::Dict{BitVector,Float64}
+    )
     overlap = 0
     keys2 = keys(state2)
     for (key, val) in state1
@@ -347,3 +347,15 @@ function StateOverlap(state1::Dict{BitVector,Float64}, state2::Dict{BitVector,Fl
     return overlap
 end
 export StateOverlap
+
+
+function GetSector(
+        state::Dict{BitVector, Float64}, 
+        symmetries::Vector{Char},
+    )
+    bstate = collect(keys(state))[1]
+    totOcc = sum(bstate)
+    magz = sum(bstate[1:2:end]) - sum(bstate[2:2:end])
+    return ifelse(symmetries == ['N', 'Z'], (totOcc, magz), ifelse(symmetries == ['N'], (totOcc,), (magz,)))
+end
+export GetSector
