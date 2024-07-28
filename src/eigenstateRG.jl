@@ -26,3 +26,4 @@ function getWavefunctionRG(initState::Dict{BitVector,Float64}, alphaValues::Vect
 
     return stateFlowArray
 end
+export getWavefunctionRG
