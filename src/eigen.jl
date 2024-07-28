@@ -207,10 +207,10 @@ function Spectrum(
         allEigvals = Float64[]
         allEigvecs = Dict{BitVector,Float64}[]
         for k in keys(classifiedBasis)
-            append!(allEigvals, classifiedEigvals[k])
             append!(allEigvecs, classifiedEigvecs[k])
+            append!(allEigvals, classifiedEigvals[k])
         end
-        return allEigvals, allEigvecs
+        return sort(allEigvals), allEigvecs[sortperm(allEigvals)]
     end
 end
 export Spectrum
