@@ -214,3 +214,55 @@ function Spectrum(
     end
 end
 export Spectrum
+
+
+"""
+    Spectrum(operator, basisStates)
+
+Extends Spectrum() by accepting an already-classified basis.
+
+# Examples
+```jldoctest
+julia> classifiedBasis = Dict((0,) => [Dict(Bool.([0, 0])=>1.0)], (1,) => [Dict(Bool.([0, 1]) => 1.0), Dict(Bool.([1, 0])=>1.0)], (2,)  => [Dict(Bool.([1, 1])=>1.0)])
+Dict{Tuple{Int64}, Vector{Dict{BitVector, Float64}}} with 3 entries:
+  (0,) => [Dict([0, 0]=>1.0)]
+  (2,) => [Dict([1, 1]=>1.0)]
+  (1,) => [Dict([0, 1]=>1.0), Dict([1, 0]=>1.0)]
+
+julia> operator = [("+-", [1, 2], 1.0), ("+-", [2, 1], 1.0)]
+2-element Vector{Tuple{String, Vector{Int64}, Float64}}:
+ ("+-", [1, 2], 1.0)
+ ("+-", [2, 1], 1.0)
+
+julia> E, X = Spectrum(operator, classifiedBasis);
+
+julia> display(X)
+Dict{Tuple{Int64}, Vector{Dict{BitVector, Float64}}} with 3 entries:
+  (0,) => [Dict([0, 0]=>1.0)]
+  (2,) => [Dict([1, 1]=>1.0)]
+  (1,) => [Dict([1, 0]=>0.707107, [0, 1]=>-0.707107), Dict([1, 0]=>0.707107, [0, 1]=>0.707107)]
+
+```
+"""
+function Spectrum(
+    operator::Vector{Tuple{String,Vector{Int64},Float64}},
+    classifiedBasis::Union{Dict{Tuple{Int64}, Vector{Dict{BitVector,Float64}}}, Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Float64}}}};
+    diagElements::Dict{}=Dict(),
+    tolerance::Float64=1e-16,
+)
+    if !isempty(diagElements)
+        @assert all(x -> true, [length(E) == size(classifiedBasis[k])[1] for (k,E) in diagElements])
+    end
+
+    classifiedEigvals = Dict(k => Float64[] for k in keys(classifiedBasis))
+    classifiedEigvecs = Dict(k => Dict{BitVector,Float64}[] for k in keys(classifiedBasis))
+    Threads.@threads for (k, basis) in collect(classifiedBasis)
+        if k in keys(diagElements)
+            classifiedEigvals[k], classifiedEigvecs[k] = Spectrum(operator, basis; diagElements=diagElements[k], tolerance=tolerance)
+        else
+            classifiedEigvals[k], classifiedEigvecs[k] = Spectrum(operator, basis; tolerance=tolerance)
+        end
+    end
+    return classifiedEigvals, classifiedEigvecs
+end
+export Spectrum
