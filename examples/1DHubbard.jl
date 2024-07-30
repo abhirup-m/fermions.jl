@@ -46,7 +46,7 @@ const retainSizeY = 50
 const retainSizeX = 1e-2
 
 function main(numSteps, U)
-    initBasis = BasisStates(4; totOccCriteria=(x, N) -> div(N, 2) - 1 ≤ sum(x) ≤ div(N, 2) + 1, magzCriteria=x -> -2 ≤ sum(x[1:2:end] - x[2:2:end]) ≤ 2)
+    initBasis = BasisStates(4, [1, 2, 3], [-1, 0, 1], x -> true)
     hamiltonianFamily = [dimerHamiltonian(U, t)]
     numStatesFamily = Int64[2]
     for i in 1:numSteps
@@ -67,9 +67,13 @@ function main(numSteps, U)
     )
     halfFillingSpectrum = [(E, X) for (E, X, numSites) in zip(eigValData, eigVecData, numStatesFamily)
                            if (numSites, 0) ∈ keys(E)]
-    groundStateInfoAll = [(E[(numSites, 0)][1], X[(numSites, 0)][1]) for (E, X, numSites) in zip(eigValData, eigVecData, numStatesFamily)
+    groundStateInfoAll = [(numSites, 0) for (E, X, numSites) in zip(eigValData, eigVecData, numStatesFamily)
                            if (numSites, 0) ∈ keys(E)]
-    specfuncFlow, freqArray = IterSpecFunc(groundStateInfoAll, halfFillingSpectrum, (("-", [1], 1.0), ("+", [1], 1.0)), 5.5, 0.01)
+
+    freqArray = collect(range(-6, stop=6, step=0.01))
+    probe = [("-", [1], 1.0)]
+    probeDag = [("+", [1], 1.0)]
+    specfuncFlow, freqArray = IterSpecFunc(groundStateInfoAll, halfFillingSpectrum, probe, probeDag, freqArray, 0.01, ['N', 'Z'])
     plots = []
     for y in specfuncFlow
         push!(plots, plot(freqArray, y))
