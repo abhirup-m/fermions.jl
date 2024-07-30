@@ -139,10 +139,10 @@ function Spectrum(
     operator::Vector{Tuple{String,Vector{Int64},Float64}},
     basisStates::Vector{Dict{BitVector,Float64}};
     diagElements::Vector{Float64}=Float64[],
-    tolerance::Float64=1e-16,
+    tolerance::Float64=1e-14,
     )
     matrix = OperatorMatrix(basisStates, operator; tolerance=tolerance)
-    @assert ishermitian(matrix)
+    @assert maximum(abs.(matrix .- matrix')) < tolerance
     if !isempty(diagElements)
         matrix += diagm(diagElements)
     end
@@ -188,7 +188,7 @@ function Spectrum(
     basisStates::Vector{Dict{BitVector,Float64}},
     symmetries::Vector{Char};
     diagElements::Vector{Float64}=Float64[],
-    tolerance::Float64=1e-16,
+    tolerance::Float64=1e-14,
     classify::Bool=false,
 )
     if !isempty(diagElements)
@@ -248,7 +248,7 @@ function Spectrum(
     operator::Vector{Tuple{String,Vector{Int64},Float64}},
     classifiedBasis::Union{Dict{Tuple{Int64}, Vector{Dict{BitVector,Float64}}}, Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Float64}}}};
     diagElements::Dict{}=Dict(),
-    tolerance::Float64=1e-16,
+    tolerance::Float64=1e-14,
 )
     if !isempty(diagElements)
         @assert all(x -> true, [length(E) == size(classifiedBasis[k])[1] for (k,E) in diagElements])

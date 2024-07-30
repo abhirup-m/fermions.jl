@@ -357,12 +357,38 @@ function SpecFunc(
                                        )
 
     # calculate sector of excited states
-    excitedSector = GetSector(ApplyOperator(probe, groundState), symmetries)
-    excitedSectorDag = GetSector(ApplyOperator(probeDag, groundState), symmetries)
+    excitedSector = GetSector(ApplyOperator(probe, gstateVector), symmetries)
+    excitedSectorDag = GetSector(ApplyOperator(probeDag, gstateVector), symmetries)
 
     classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigenVals)
-    minimalEigVecs = Dict{BitVector, Float64}[[groundState]; classifiedSpectrum[excitedSector]; classifiedSpectrum[excitedSectorDag];]
+    minimalEigVecs = Dict{BitVector, Float64}[[gstateVector]; classifiedSpectrum[excitedSector]; classifiedSpectrum[excitedSectorDag];]
     minimalEigVals = Float64[[energyGs]; classifiedEnergies[excitedSector]; classifiedEnergies[excitedSectorDag];]
+
+    return SpecFunc(minimalEigVals, minimalEigVecs, probe, probeDag, freqArray, broadening; gsIndex=1)
+end
+export SpecFunc
+
+
+function SpecFunc(
+    eigVals::Union{Dict{Tuple{Int64}, Vector{Float64}}, Dict{Tuple{Int64, Int64}, Vector{Float64}}},
+    eigVecs::Union{Dict{Tuple{Int64}, Vector{Dict{BitVector,Float64}}}, Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Float64}}}},
+    probe::Vector{Tuple{String,Vector{Int64},Float64}},
+    probeDag::Vector{Tuple{String,Vector{Int64},Float64}},
+    freqArray::Vector{Float64},
+    broadening::Float64,
+    groundSector::Union{Tuple{Int64}, Tuple{Int64,Int64}},
+    symmetries::Vector{Char},
+)
+
+    gstateEnergy = minimum(eigVals[groundSector])
+    gstateVector = eigVecs[groundSector][eigVals[groundSector] .== gstateEnergy][1]
+
+    # calculate sector of excited states
+    excitedSector = GetSector(ApplyOperator(probe, gstateVector), symmetries)
+    excitedSectorDag = GetSector(ApplyOperator(probeDag, gstateVector), symmetries)
+
+    minimalEigVecs = Dict{BitVector, Float64}[[gstateVector]; eigVecs[excitedSector]; eigVecs[excitedSectorDag];]
+    minimalEigVals = Float64[[gstateEnergy]; eigVals[excitedSector]; eigVals[excitedSectorDag];]
 
     return SpecFunc(minimalEigVals, minimalEigVecs, probe, probeDag, freqArray, broadening; gsIndex=1)
 end

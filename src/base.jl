@@ -136,7 +136,7 @@ export TransformBit
 
 
 """
-    ApplyOperatorChunk(opType, opMembers, opStrength, incomingState)
+    ApplyOperatorChunk(opType, opMembers, opStrength, incomingState; tolerance)
 
 Apply a single tensor product operator chunk (for eg., c^†_1 c_2 or n_1 c^†_3 c_4) 
 on a general state and return the new state.
@@ -161,6 +161,7 @@ function ApplyOperatorChunk(
         opMembers::Vector{Int64},
         opStrength::Float64,
         incomingState::Dict{BitVector,Float64};
+        tolerance::Float64=1e-16
     )
     outgoingState = Dict{BitVector,Float64}()
     for i in eachindex(opMembers)[end:-1:2]
@@ -193,7 +194,7 @@ function ApplyOperatorChunk(
             newCoefficient *= exchangeSign * factor
         end
 
-        if newCoefficient != 0
+        if abs(newCoefficient) > tolerance
             if haskey(outgoingState, outgoingBasisState)
                 outgoingState[outgoingBasisState] += opStrength * newCoefficient
             else
@@ -207,7 +208,7 @@ export ApplyOperatorChunk
 
 
 """
-    ApplyOperator(operator, incomingState)
+    ApplyOperator(operator, incomingState; tolerance)
 
 Extends ApplyOperatorChunk() by applying a more general operator (consisting
 of multiple operator chunks) on a general state.
@@ -233,11 +234,12 @@ Dict{BitVector, Float64} with 2 entries:
 function ApplyOperator(
         operator::Vector{Tuple{String,Vector{Int64},Float64}},
         incomingState::Dict{BitVector,Float64};
+        tolerance::Float64=1e-16
     )
     @assert !isempty(operator)
     @assert maximum([maximum(positions) for (_, positions, _) in operator]) ≤ length.(keys(incomingState))[1]
 
-    return mergewith(+, fetch.([Threads.@spawn ApplyOperatorChunk(opType, opMembers, opStrength, copy(incomingState))
+    return mergewith(+, fetch.([Threads.@spawn ApplyOperatorChunk(opType, opMembers, opStrength, copy(incomingState); tolerance=tolerance) 
                                 for (opType, opMembers, opStrength) in operator])...)
 
     return outgoingState
@@ -274,10 +276,11 @@ julia> OperatorMatrix(basis, operator)
 """
 function OperatorMatrix(
         basisStates::Vector{Dict{BitVector,Float64}},
-        operator::Vector{Tuple{String,Vector{Int64},Float64}}
+        operator::Vector{Tuple{String,Vector{Int64},Float64}};
+        tolerance::Float64=1e-16,
     )
     operatorMatrix = zeros(length(basisStates), length(basisStates))
-    newStates = fetch.([Threads.@spawn ApplyOperator(operator, incomingState)
+    newStates = fetch.([Threads.@spawn ApplyOperator(operator, incomingState; tolerance=tolerance)
                         for incomingState in basisStates])
     Threads.@threads for incomingIndex in findall(!isempty, newStates)
         Threads.@threads for outgoingIndex in eachindex(basisStates)

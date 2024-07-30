@@ -1,4 +1,4 @@
-using Serialization, Random
+using Serialization, Random, LinearAlgebra
 
 """Expands the basis to accomodate new 1-particle states by tacking 
 product states on to existing states. For eg. |10> + |01> -> (|10> + |01>)⊗|1>.
@@ -75,7 +75,7 @@ function IterDiag(
 )
     @assert length(numSitesFlow) == length(hamFlow)
 
-    classifiedBasis = ClassifyBasis(basisStates)
+    classifiedBasis = ClassifyBasis(basisStates, ['N', 'Z'])
     diagElementsClassified = Dict(k => zeros(length(v)) for (k, v) in classifiedBasis)
 
     numDiffFlow = [n2 - n1 for (n1, n2) in zip(numSitesFlow[1:end-1], numSitesFlow[2:end])]
@@ -85,9 +85,7 @@ function IterDiag(
     @showprogress enabled=showProgress for (i, hamiltonian) in enumerate(hamFlow)
         push!(eigValData, Dict())
         push!(eigVecData, Dict())
-        @sync for (sector, basis) in classifiedBasis
-            Threads.@spawn eigValData[end][sector], eigVecData[end][sector] = Spectrum(hamiltonian, basis, diagElements=diagElementsClassified[sector])
-        end
+        eigValData[end], eigVecData[end] = Spectrum(hamiltonian, classifiedBasis, diagElements=diagElementsClassified)
         if i == length(hamFlow)
             continue
         end
@@ -116,13 +114,11 @@ function IterDiag(
 end
 
 
-function IterSpecFunc(groundStateInfoAll, spectrumData, probes, maxOmega, deltaOmega)
-    probe, probeDag = probes
-    freqArray = collect(range(-maxOmega, stop=maxOmega, step=deltaOmega))
+function IterSpecFunc(groundSectors, spectrumData, probe, probeDag, freqArray, broadening, symmetries)
     specfuncFlow = [0 .* freqArray for _ in spectrumData]
 
-    for (i, (groundStateInfo, (eigVals, eigVecs))) in enumerate(zip(groundStateInfoAll, spectrumData))
-        specfuncFlow[i] .+= SpecFunc(groundStateInfo, eigVals, eigVecs, probe, probeDag, freqArray, 1e-2)
+    for (i, (sector, (eigVals, eigVecs))) in enumerate(zip(groundSectors, spectrumData))
+        specfuncFlow[i] .+= SpecFunc(eigVals, eigVecs, probe, probeDag, freqArray, broadening, sector, symmetries)
     end
     specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
     return specfuncFlow, freqArray
