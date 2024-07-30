@@ -7,7 +7,6 @@ function ExpandBasis(
     basis::Vector{Dict{BitVector,Float64}},
     sector::Tuple{Int64,Int64},
     eigvals::Vector{Float64},
-    retainSize::Float64,
     numNew::Int64;
     totOccCriteria::Function=o -> true,
     magzCriteria::Function=m -> true,
@@ -31,13 +30,7 @@ function ExpandBasis(
     Threads.@threads for (newComb, newSector) in newPairs
         append!(newDiagElementsClassified[newSector], eigvals)
         for stateDict in basis
-            maxVal = maximum(abs.(values(stateDict)))
-            retainSize = 1e-10
-            newKeyValPairs = [(vcat(key, collect(newComb)), val) for (key, val) in stateDict if abs(val)/maxVal >= retainSize]
-            while length(newKeyValPairs) > 1000 && retainSize < 1e-2
-                retainSize *= 2
-                newKeyValPairs = [(vcat(key, collect(newComb)), val) for (key, val) in stateDict if abs(val)/maxVal >= retainSize]
-            end
+            newKeyValPairs = [(vcat(key, collect(newComb)), val) for (key, val) in stateDict]
             push!(newClassifiedBasis[newSector], Dict(newKeyValPairs))
         end
     end
@@ -67,8 +60,7 @@ function IterDiag(
     hamFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
     basisStates::Vector{Dict{BitVector,Float64}},
     numSitesFlow::Vector{Int64},
-    retainSizeY::Int64,
-    retainSizeX::Float64;
+    retainSizeY::Int64;
     showProgress::Bool=false,
     totOccCriteria::Function=(o, N) -> true,
     magzCriteria::Function=m -> true,
@@ -94,7 +86,7 @@ function IterDiag(
         newDiagElementsClassified = Dict{keytype(classifiedBasis),Vector{Float64}}()
         for sector in keys(classifiedBasis)
             newClassifiedBasis, newDiagElementsClassified = ExpandBasis(eigVecData[end][sector], sector,
-                eigValData[end][sector], retainSizeX, numDiffFlow[i]; totOccCriteria=o -> totOccCriteria(o, numSitesFlow[i+1]),
+                eigValData[end][sector], numDiffFlow[i]; totOccCriteria=o -> totOccCriteria(o, numSitesFlow[i+1]),
                 magzCriteria=magzCriteria, newClassifiedBasis=newClassifiedBasis,
                 newDiagElementsClassified=newDiagElementsClassified)
         end

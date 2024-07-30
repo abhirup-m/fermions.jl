@@ -59,8 +59,7 @@ function main(numSteps, U)
         hamiltonianFamily,
         initBasis,
         numStatesFamily,
-        retainSizeY,
-        retainSizeX;
+        retainSizeY;
         showProgress=true,
         totOccCriteria=(o, N) -> N - 1 ≤ o ≤ N + 1,
         magzCriteria=m -> -2 ≤ m ≤ 2
@@ -83,4 +82,4 @@ function main(numSteps, U)
     #=savefig(p, "specfunc.pdf")=#
 end
 
-main(6, 2.0)
+main(8, 2.0)
