@@ -58,51 +58,51 @@ the basis of these Ns states, then diagonalises it, etc.
 """
 function IterDiag(
     hamFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
-    basisStates::Vector{Dict{BitVector,Float64}},
+    initBasis::Vector{Dict{BitVector,Float64}},
     numSitesFlow::Vector{Int64},
-    retainSizeY::Int64;
+    maxSize::Int64;
     showProgress::Bool=false,
     totOccCriteria::Function=(o, N) -> true,
     magzCriteria::Function=m -> true,
 )
     @assert length(numSitesFlow) == length(hamFlow)
+    fundMatrices = Dict{Char, Matrix{Float64}}(type => OperatorMatrix(BasisStates(1), [(string(type), [1], 1.0)]) for type in ('+', '-', 'n', 'h'))
+    sigmaz = diagm([1, -1])
+    basicMatrices = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(basisStates, [(string(type), [site], 1.0)]) for site in 1:numSitesFlow[1] for type in ('+', '-', 'n', 'h'))
+    transformMatrices = []
+    eigvalData = []
 
-    classifiedBasis = ClassifyBasis(basisStates, ['N', 'Z'])
-    diagElementsClassified = Dict(k => zeros(length(v)) for (k, v) in classifiedBasis)
+    hamMatrix = TensorProduct(hamFlow[1], basicMatrices)
+    F = eigen(hamMatrix)
+    push!(transformMatrices, F.vectors[:, 1:maxSize])
+    push!(eigvalData, F.values[1:maxSize])
+    numSites = numSitesFlow[1]
 
-    numDiffFlow = [n2 - n1 for (n1, n2) in zip(numSitesFlow[1:end-1], numSitesFlow[2:end])]
-    eigValData = Dict{Tuple{Int64, Int64}, Vector{Float64}}[]
-    eigVecData = Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector, Float64}}}[]
+    for (i, addedSites) in enumerate(numSitesFlow[2:end] .- numSitesFlow[1:end-1])
+        for (k, v) in basicMatrices
+            basicMatrices[k] = kron(transformMatrices[end]' * v * transformMatrices[end], I(2))
+        end
+        
+        padSize = Int(transformMatrices[end] |> size |> minimum |> log2 |> ceil)
+        identityRest = ifelse(padSize > 1, kron(fill(sigmaz, padSize)...), sigmaz)
+        identityRestTransf = transformMatrices[end]' * identityRest * transformMatrices[end]
+        display(identityRestTransf)
 
-    @showprogress enabled=showProgress for (i, hamiltonian) in enumerate(hamFlow)
-        push!(eigValData, Dict())
-        push!(eigVecData, Dict())
-        eigValData[end], eigVecData[end] = Spectrum(hamiltonian, classifiedBasis, diagElements=diagElementsClassified)
-        if i == length(hamFlow)
-            continue
+        for type in ('+', '-', 'n', 'h')
+            display(fundMatrices[type])
+            basicMatrices[(type, numSites+1)] = kron(identityRestTransf, fundMatrices[type])
         end
 
-        newClassifiedBasis = typeof(classifiedBasis)()
-        newDiagElementsClassified = Dict{keytype(classifiedBasis),Vector{Float64}}()
-        for sector in keys(classifiedBasis)
-            newClassifiedBasis, newDiagElementsClassified = ExpandBasis(eigVecData[end][sector], sector,
-                eigValData[end][sector], numDiffFlow[i]; totOccCriteria=o -> totOccCriteria(o, numSitesFlow[i+1]),
-                magzCriteria=magzCriteria, newClassifiedBasis=newClassifiedBasis,
-                newDiagElementsClassified=newDiagElementsClassified)
-        end
-
-        if i == length(hamFlow)
-            continue
-        end
-        classifiedBasis, diagElementsClassified = TruncateBasis(newClassifiedBasis, newDiagElementsClassified, retainSizeY)
+        display(basicMatrices[('+', 3)])
+        display(basicMatrices[('-', 3)])
+        hamMatrix = diagm(repeat(eigvalData[end], inner=2 * addedSites)) + TensorProduct(hamFlow[i+1], basicMatrices)
+        display(hamMatrix)
+        F = eigen(hamMatrix)
+        push!(transformMatrices, F.vectors[:, 1:maxSize])
+        push!(eigvalData, F.values)
+        numSites += addedSites
     end
-    dirStructure = joinpath("data")
-    mkpath(dirStructure)
-    savePathE = joinpath(dirStructure, string(now()) |> x->replace(x,":"=>"-","."=>"-")) * "-E"
-    savePathX = joinpath(dirStructure, string(now()) |> x->replace(x,":"=>"-","."=>"-")) * "-X"
-    serialize(savePathE, eigValData)
-    serialize(savePathX, eigVecData)
-    return eigValData, eigVecData
+    return eigvalData, transformMatrices
 end
 
 
@@ -114,4 +114,12 @@ function IterSpecFunc(groundSectors, spectrumData, probe, probeDag, freqArray, b
     end
     specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
     return specfuncFlow, freqArray
+end
+
+
+function TensorProduct(
+        operator::Vector{Tuple{String,Vector{Int64},Float64}},
+        basicMatrices::Dict{Tuple{Char, Int64}, Matrix{Float64}},
+    )
+    totalMat = sum([opStrength * prod([basicMatrices[pair] for pair in zip(opType, opMembers)]) for (opType, opMembers, opStrength) in operator])
 end

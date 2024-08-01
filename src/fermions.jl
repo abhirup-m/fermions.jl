@@ -8,6 +8,6 @@ include("correlations.jl")
 include("eigenstateRG.jl")
 include("reverseUnitaries.jl")
 include("stateExpansion.jl")
-include("iterativeDiag.jl")
+include("iterDiag.jl")
 
 end
