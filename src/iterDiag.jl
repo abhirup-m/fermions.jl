@@ -68,14 +68,14 @@ function IterDiag(
     @assert length(numSitesFlow) == length(hamFlow)
     fundMatrices = Dict{Char, Matrix{Float64}}(type => OperatorMatrix(BasisStates(1), [(string(type), [1], 1.0)]) for type in ('+', '-', 'n', 'h'))
     sigmaz = diagm([1, -1])
-    basicMatrices = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(basisStates, [(string(type), [site], 1.0)]) for site in 1:numSitesFlow[1] for type in ('+', '-', 'n', 'h'))
+    basicMatrices = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(initBasis, [(string(type), [site], 1.0)]) for site in 1:numSitesFlow[1] for type in ('+', '-', 'n', 'h'))
     transformMatrices = []
     eigvalData = []
 
     hamMatrix = TensorProduct(hamFlow[1], basicMatrices)
     F = eigen(hamMatrix)
-    push!(transformMatrices, F.vectors[:, 1:maxSize])
-    push!(eigvalData, F.values[1:maxSize])
+    push!(transformMatrices, F.vectors[:, 1:minimum((length(F.values), maxSize))])
+    push!(eigvalData, F.values[1:minimum((length(F.values), maxSize))])
     numSites = numSitesFlow[1]
 
     for (i, addedSites) in enumerate(numSitesFlow[2:end] .- numSitesFlow[1:end-1])
@@ -84,22 +84,19 @@ function IterDiag(
         end
         
         padSize = Int(transformMatrices[end] |> size |> minimum |> log2 |> ceil)
-        identityRest = ifelse(padSize > 1, kron(fill(sigmaz, padSize)...), sigmaz)
+        identityRest = padSize > 1 ? kron(fill(sigmaz, padSize)...) : sigmaz
+        println(padSize, size(transformMatrices[end]'), size(identityRest))
         identityRestTransf = transformMatrices[end]' * identityRest * transformMatrices[end]
-        display(identityRestTransf)
 
         for type in ('+', '-', 'n', 'h')
-            display(fundMatrices[type])
             basicMatrices[(type, numSites+1)] = kron(identityRestTransf, fundMatrices[type])
         end
 
-        display(basicMatrices[('+', 3)])
-        display(basicMatrices[('-', 3)])
         hamMatrix = diagm(repeat(eigvalData[end], inner=2 * addedSites)) + TensorProduct(hamFlow[i+1], basicMatrices)
-        display(hamMatrix)
+        println(size(hamMatrix))
         F = eigen(hamMatrix)
-        push!(transformMatrices, F.vectors[:, 1:maxSize])
-        push!(eigvalData, F.values)
+        push!(transformMatrices, F.vectors[:, 1:minimum((length(F.values), maxSize))])
+        push!(eigvalData, F.values[1:minimum((length(F.values), maxSize))])
         numSites += addedSites
     end
     return eigvalData, transformMatrices
