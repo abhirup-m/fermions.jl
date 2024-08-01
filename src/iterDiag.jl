@@ -104,6 +104,7 @@ function IterDiag(
     end
     return eigvalData, transformMatrices
 end
+export IterDiag
 
 
 function IterSpecFunc(groundSectors, spectrumData, probe, probeDag, freqArray, broadening, symmetries)
