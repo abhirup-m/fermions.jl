@@ -63,12 +63,14 @@ function IterDiag(
     @assert length(hamltFlow) > 1
     currentSites = [opMembers for (_, opMembers, _) in hamltFlow[1]] |> V -> vcat(V...) |> unique |> sort
     initBasis = BasisStates(maximum(currentSites))
+    bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
+
+    saveId = randstring()
+    mkpath("data")
+    savePaths = [joinpath("data", "$(saveId)-$(j)") for j in 1:length(hamltFlow)]
+
     basicMats = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(initBasis, [(string(type), [site], 1.0)]) 
                                                           for site in currentSites for type in ('+', '-', 'n', 'h'))
-    bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
-    rotations = Matrix{Float64}[]
-    eigvalData = Vector{Float64}[]
-
     hamltMatrix = diagm(fill(0.0, length(initBasis)))
 
     for (step, hamlt) in enumerate(hamltFlow)
@@ -76,8 +78,9 @@ function IterDiag(
         @assert maximum(abs.(hamltMatrix - hamltMatrix')) < 1e-15
         F = eigen(0.5 * (hamltMatrix + hamltMatrix'))
         retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
-        push!(rotations, F.vectors[:, 1:retainStates])
-        push!(eigvalData, F.values[1:retainStates])
+        rotation = F.vectors[:, 1:retainStates]
+        eigVals = F.values[1:retainStates]
+        serialize(savePaths[step], Dict("operators" => basicMats, "rotation" => rotation, "eigVals" => eigVals))
 
         if step == length(hamltFlow)
             break
@@ -88,15 +91,15 @@ function IterDiag(
 
         identityEnv = length(newSites) == 1 ? I(2) : kron(fill(I(2), length(newSites))...)
         # expanded diagonal hamiltonian
-        hamltMatrix = kron(diagm(F.values[1:retainStates]), identityEnv)
+        hamltMatrix = kron(diagm(eigVals), identityEnv)
 
         # rotate and enlarge qubit operators of current system
         for (k,v) in collect(basicMats)
-            basicMats[k] = kron(rotations[end]' * v * rotations[end], identityEnv)
+            basicMats[k] = kron(rotation' * v * rotation, identityEnv)
         end
 
         # rotate the antisymmetrizer matrix
-        bondAntiSymmzer = rotations[end]' * bondAntiSymmzer * rotations[end]
+        bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
 
         # absorb the qbit operators for the new sites
         for site in newSites for type in ('+', '-', 'n', 'h')
@@ -109,7 +112,7 @@ function IterDiag(
         
         append!(currentSites, newSites)
     end
-    return eigvalData, rotations
+    return savePaths
 end
 export IterDiag
 
