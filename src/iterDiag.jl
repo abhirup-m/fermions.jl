@@ -108,7 +108,7 @@ function IterDiag(
         end
 
         # expand the antisymmetrizer
-        bondAntiSymmzer = kron(bondAntiSymmzer, sigmaz)
+        bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSites))...)
         
         append!(currentSites, newSites)
     end
@@ -117,11 +117,18 @@ end
 export IterDiag
 
 
-function IterSpecFunc(groundSectors, spectrumData, probe, probeDag, freqArray, broadening, symmetries)
-    specfuncFlow = [0 .* freqArray for _ in spectrumData]
+function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
+    specfuncFlow = [0 .* freqArray for _ in savePaths]
 
-    for (i, (sector, (eigVals, eigVecs))) in enumerate(zip(groundSectors, spectrumData))
-        specfuncFlow[i] .+= SpecFunc(eigVals, eigVecs, probe, probeDag, freqArray, broadening, sector, symmetries)
+    for (step, savePath) in enumerate(savePaths)
+        f = deserialize(savePath)
+        basicMats = f["operators"]
+        rotation = f["rotation"]
+        eigVals = f["eigVals"]
+        eigVecs = [collect(vec) for vec in eachcol(rotation)]
+        probeMatrix = TensorProduct(probe, basicMats)
+        probeDagMatrix = TensorProduct(probeDag, basicMats)
+        specfuncFlow[step] .+= SpecFunc(eigVals, rotation, probeMatrix, probeDagMatrix, freqArray, broadening)
     end
     specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
     return specfuncFlow, freqArray
