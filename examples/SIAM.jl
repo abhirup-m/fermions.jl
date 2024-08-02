@@ -1,8 +1,8 @@
 using fermions
 include("../src/iterDiag.jl")
 
-realSites = 10
-maxSize = 10
+realSites = 20
+maxSize = 400
 U = 1.
 t = 1.
 hamFlow = [
@@ -20,4 +20,4 @@ end
 
 initBasis = BasisStates(1)
 numSitesFlow = collect(1:1:1+realSites)
-r = IterDiag(hamFlow, initBasis, numSitesFlow, maxSize)
+r = IterDiag(hamFlow, maxSize);

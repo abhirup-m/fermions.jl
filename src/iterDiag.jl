@@ -57,49 +57,59 @@ eigenstates, writes the Hamiltonian for a larger number of degrees of freedom in
 the basis of these Ns states, then diagonalises it, etc.
 """
 function IterDiag(
-    hamFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
-    initBasis::Vector{Dict{BitVector,Float64}},
-    numSitesFlow::Vector{Int64},
-    maxSize::Int64;
-    showProgress::Bool=false,
-    totOccCriteria::Function=(o, N) -> true,
-    magzCriteria::Function=m -> true,
+    hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
+    maxSize::Int64,
 )
-    @assert length(numSitesFlow) == length(hamFlow)
-    fundMatrices = Dict{Char, Matrix{Float64}}(type => OperatorMatrix(BasisStates(1), [(string(type), [1], 1.0)]) for type in ('+', '-', 'n', 'h'))
-    sigmaz = diagm([1, -1])
-    basicMatrices = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(initBasis, [(string(type), [site], 1.0)]) for site in 1:numSitesFlow[1] for type in ('+', '-', 'n', 'h'))
-    transformMatrices = []
-    eigvalData = []
+    @assert length(hamltFlow) > 1
+    currentSites = [opMembers for (_, opMembers, _) in hamltFlow[1]] |> V -> vcat(V...) |> unique |> sort
+    initBasis = BasisStates(maximum(currentSites))
+    basicMats = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(initBasis, [(string(type), [site], 1.0)]) 
+                                                          for site in currentSites for type in ('+', '-', 'n', 'h'))
+    bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
+    rotations = Matrix{Float64}[]
+    eigvalData = Vector{Float64}[]
 
-    hamMatrix = TensorProduct(hamFlow[1], basicMatrices)
-    F = eigen(hamMatrix)
-    push!(transformMatrices, F.vectors[:, 1:minimum((length(F.values), maxSize))])
-    push!(eigvalData, F.values[1:minimum((length(F.values), maxSize))])
-    numSites = numSitesFlow[1]
+    hamltMatrix = diagm(fill(0.0, length(initBasis)))
 
-    for (i, addedSites) in enumerate(numSitesFlow[2:end] .- numSitesFlow[1:end-1])
-        for (k, v) in basicMatrices
-            basicMatrices[k] = kron(transformMatrices[end]' * v * transformMatrices[end], I(2))
+    for (step, hamlt) in enumerate(hamltFlow)
+        hamltMatrix += TensorProduct(hamlt, basicMats)
+        @assert maximum(abs.(hamltMatrix - hamltMatrix')) < 1e-15
+        F = eigen(0.5 * (hamltMatrix + hamltMatrix'))
+        retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
+        push!(rotations, F.vectors[:, 1:retainStates])
+        push!(eigvalData, F.values[1:retainStates])
+
+        if step == length(hamltFlow)
+            break
         end
+
+        newSites = [setdiff(opMembers, currentSites) for (_, opMembers, _) in hamltFlow[step+1]] |> V -> vcat(V...) |> unique |> sort
+        newBasis = BasisStates(length(newSites))
+
+        identityEnv = length(newSites) == 1 ? I(2) : kron(fill(I(2), length(newSites))...)
+        # expanded diagonal hamiltonian
+        hamltMatrix = kron(diagm(F.values[1:retainStates]), identityEnv)
+
+        # rotate and enlarge qubit operators of current system
+        for (k,v) in collect(basicMats)
+            basicMats[k] = kron(rotations[end]' * v * rotations[end], identityEnv)
+        end
+
+        # rotate the antisymmetrizer matrix
+        bondAntiSymmzer = rotations[end]' * bondAntiSymmzer * rotations[end]
+
+        # absorb the qbit operators for the new sites
+        for site in newSites for type in ('+', '-', 'n', 'h')
+                basicMats[(type, site)] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [(string(type), [site - length(currentSites)], 1.0)]))
+            end
+        end
+
+        # expand the antisymmetrizer
+        bondAntiSymmzer = kron(bondAntiSymmzer, sigmaz)
         
-        padSize = Int(transformMatrices[end] |> size |> minimum |> log2 |> ceil)
-        identityRest = padSize > 1 ? kron(fill(sigmaz, padSize)...) : sigmaz
-        println(padSize, size(transformMatrices[end]'), size(identityRest))
-        identityRestTransf = transformMatrices[end]' * identityRest * transformMatrices[end]
-
-        for type in ('+', '-', 'n', 'h')
-            basicMatrices[(type, numSites+1)] = kron(identityRestTransf, fundMatrices[type])
-        end
-
-        hamMatrix = diagm(repeat(eigvalData[end], inner=2 * addedSites)) + TensorProduct(hamFlow[i+1], basicMatrices)
-        println(size(hamMatrix))
-        F = eigen(hamMatrix)
-        push!(transformMatrices, F.vectors[:, 1:minimum((length(F.values), maxSize))])
-        push!(eigvalData, F.values[1:minimum((length(F.values), maxSize))])
-        numSites += addedSites
+        append!(currentSites, newSites)
     end
-    return eigvalData, transformMatrices
+    return eigvalData, rotations
 end
 export IterDiag
 
@@ -117,7 +127,7 @@ end
 
 function TensorProduct(
         operator::Vector{Tuple{String,Vector{Int64},Float64}},
-        basicMatrices::Dict{Tuple{Char, Int64}, Matrix{Float64}},
+        basicMats::Dict{Tuple{Char, Int64}, Matrix{Float64}},
     )
-    totalMat = sum([opStrength * prod([basicMatrices[pair] for pair in zip(opType, opMembers)]) for (opType, opMembers, opStrength) in operator])
+    totalMat = sum([opStrength * prod([basicMats[pair] for pair in zip(opType, opMembers)]) for (opType, opMembers, opStrength) in operator])
 end
