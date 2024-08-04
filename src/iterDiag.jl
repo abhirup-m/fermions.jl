@@ -1,4 +1,4 @@
-using Serialization, Random, LinearAlgebra
+using Serialization, Random, LinearAlgebra, ProgressMeter
 
 """Expands the basis to accomodate new 1-particle states by tacking 
 product states on to existing states. For eg. |10> + |01> -> (|10> + |01>)⊗|1>.
@@ -73,7 +73,7 @@ function IterDiag(
                                                           for site in currentSites for type in ('+', '-', 'n', 'h'))
     hamltMatrix = diagm(fill(0.0, length(initBasis)))
 
-    for (step, hamlt) in enumerate(hamltFlow)
+    @showprogress for (step, hamlt) in enumerate(hamltFlow)
         hamltMatrix += TensorProduct(hamlt, basicMats)
         F = eigen(0.5 * (hamltMatrix + hamltMatrix'))
         retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
@@ -131,6 +131,7 @@ function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
         for j in step+1:length(specfuncFlow)
             specfuncFlow[j] = copy(specfuncFlow[step])
         end
+        run(`rm $(savePath)`)
     end
     specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
     return specfuncFlow, freqArray
