@@ -2,7 +2,7 @@ using fermions, Plots
 include("../src/iterDiag.jl")
 
 realSites = 10
-maxSize = 100
+maxSize = 200
 U = 0.
 t = 1.
 hamFlow = [[("n", [1], -U/2)]]

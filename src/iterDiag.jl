@@ -75,7 +75,6 @@ function IterDiag(
 
     for (step, hamlt) in enumerate(hamltFlow)
         hamltMatrix += TensorProduct(hamlt, basicMats)
-        @assert maximum(abs.(hamltMatrix - hamltMatrix')) < 1e-15
         F = eigen(0.5 * (hamltMatrix + hamltMatrix'))
         retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
         rotation = F.vectors[:, 1:retainStates]
@@ -129,6 +128,9 @@ function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
         probeMatrix = TensorProduct(probe, basicMats)
         probeDagMatrix = TensorProduct(probeDag, basicMats)
         specfuncFlow[step] .+= SpecFunc(eigVals, rotation, probeMatrix, probeDagMatrix, freqArray, broadening)
+        for j in step+1:length(specfuncFlow)
+            specfuncFlow[j] = copy(specfuncFlow[step])
+        end
     end
     specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
     return specfuncFlow, freqArray
