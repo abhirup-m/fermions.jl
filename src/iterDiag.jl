@@ -60,6 +60,7 @@ function IterDiag(
     hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
     maxSize::Int64;
     degenTol::Float64=1e-5,
+    dataDir::String="data-iterdiag",
 )
     @assert length(hamltFlow) > 1
     currentSites = [opMembers for (_, opMembers, _) in hamltFlow[1]] |> V -> vcat(V...) |> unique |> sort
@@ -67,9 +68,9 @@ function IterDiag(
     bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
 
     saveId = randstring()
-    mkpath("data")
-    savePaths = [joinpath("data", "$(saveId)-$(j)") for j in 1:length(hamltFlow)]
-
+    rm(dataDir; recursive=true, force=true)
+    mkpath(dataDir)
+    savePaths = [joinpath(dataDir, "$(saveId)-$(j)") for j in 1:length(hamltFlow)]
     basicMats = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(initBasis, [(string(type), [site], 1.0)]) 
                                                           for site in currentSites for type in ('+', '-', 'n', 'h'))
     hamltMatrix = diagm(fill(0.0, length(initBasis)))
@@ -142,9 +143,9 @@ function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
         probeMatrix = TensorProduct(probe, basicMats)
         probeDagMatrix = TensorProduct(probeDag, basicMats)
         specfuncFlow[step] .+= SpecFunc(eigVals, rotation, probeMatrix, probeDagMatrix, freqArray, broadening)
-        # for j in step+1:length(specfuncFlow)
-        #     specfuncFlow[j] = copy(specfuncFlow[step])
-        # end
+        for j in step+1:length(specfuncFlow)
+            specfuncFlow[j] = copy(specfuncFlow[step])
+        end
         run(`rm $(savePath)`)
     end
     specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
