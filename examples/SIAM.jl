@@ -1,8 +1,8 @@
 using fermions, Plots, Measures
 include("../src/iterDiag.jl")
 
-realSites = 100
-maxSize = 300
+realSites = 20
+maxSize = 200
 U = 8.
 t = 1.1
 # hamFlow = [[("n", [1], -U/2)]]
@@ -43,7 +43,7 @@ broadening = 10^-1.5
 freqArray = collect(range(-10, stop=10, step=0.01))
 probe = [("-", [1], 1.0), ("-", [2], 1.0)]
 probeDag = [("+", [1], 1.0), ("+", [2], 1.0)]
-specfuncFlow, freqArray = IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
+specfuncFlow, freqArray = IterSpecFunc(savePaths[1:2:end], probe, probeDag, freqArray, broadening)
 
 for (i, SF) in enumerate(specfuncFlow)
     fig = plot(freqArray, SF, size=(350, 200), thickness_scaling=1.3)
