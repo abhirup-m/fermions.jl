@@ -58,7 +58,8 @@ the basis of these Ns states, then diagonalises it, etc.
 """
 function IterDiag(
     hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
-    maxSize::Int64,
+    maxSize::Int64;
+    degenTol::Float64=1e-5,
 )
     @assert length(hamltFlow) > 1
     currentSites = [opMembers for (_, opMembers, _) in hamltFlow[1]] |> V -> vcat(V...) |> unique |> sort
@@ -77,6 +78,16 @@ function IterDiag(
         hamltMatrix += TensorProduct(hamlt, basicMats)
         F = eigen(0.5 * (hamltMatrix + hamltMatrix'))
         retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
+
+        # ensure we aren't truncating in the middle of degenerate states
+        for energy in F.values[retainStates+1:end]
+            if abs(energy - F.values[retainStates]) > degenTol
+                break
+            else
+                retainStates += 1
+            end
+        end
+
         rotation = F.vectors[:, 1:retainStates]
         eigVals = F.values[1:retainStates]
         serialize(savePaths[step], Dict("operators" => basicMats, "rotation" => rotation, "eigVals" => eigVals))
@@ -88,7 +99,10 @@ function IterDiag(
         newSites = [setdiff(opMembers, currentSites) for (_, opMembers, _) in hamltFlow[step+1]] |> V -> vcat(V...) |> unique |> sort
         newBasis = BasisStates(length(newSites))
 
+        # identity matrix for the sites being added. will be `kron'ed
+        # with the operators of the current sites to expand them.
         identityEnv = length(newSites) == 1 ? I(2) : kron(fill(I(2), length(newSites))...)
+
         # expanded diagonal hamiltonian
         hamltMatrix = kron(diagm(eigVals), identityEnv)
 
@@ -128,9 +142,9 @@ function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
         probeMatrix = TensorProduct(probe, basicMats)
         probeDagMatrix = TensorProduct(probeDag, basicMats)
         specfuncFlow[step] .+= SpecFunc(eigVals, rotation, probeMatrix, probeDagMatrix, freqArray, broadening)
-        for j in step+1:length(specfuncFlow)
-            specfuncFlow[j] = copy(specfuncFlow[step])
-        end
+        # for j in step+1:length(specfuncFlow)
+        #     specfuncFlow[j] = copy(specfuncFlow[step])
+        # end
         run(`rm $(savePath)`)
     end
     specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
