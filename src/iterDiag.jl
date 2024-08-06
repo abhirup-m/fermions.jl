@@ -90,6 +90,7 @@ function IterCorrelation(savePath, corrDef)
     corrOperator = TensorProduct(corrDef, basicMats)
     return GenCorrelation(eigVecs[1], corrOperator)
 end
+export IterCorrelation
 
 
 function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
@@ -112,6 +113,7 @@ function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
     specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
     return specfuncFlow, freqArray
 end
+export IterSpecFunc
 
 
 function TensorProduct(
@@ -120,3 +122,4 @@ function TensorProduct(
     )
     totalMat = sum([opStrength * prod([basicMats[pair] for pair in zip(opType, opMembers)]) for (opType, opMembers, opStrength) in operator])
 end
+export TensorProduct
