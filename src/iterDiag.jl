@@ -81,6 +81,17 @@ end
 export IterDiag
 
 
+function IterCorrelation(savePath, corrDef)
+    f = deserialize(savePath)
+    basicMats = f["operators"]
+    rotation = f["rotation"]
+    eigVals = f["eigVals"]
+    eigVecs = [collect(vec) for vec in eachcol(rotation)]
+    corrOperator = TensorProduct(corrDef, basicMats)
+    return GenCorrelation(eigVecs[1], corrOperator)
+end
+
+
 function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
     specfuncFlow = [0 .* freqArray for _ in savePaths]
 
