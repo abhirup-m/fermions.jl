@@ -30,6 +30,17 @@ end
 export GenCorrelation
 
 
+function GenCorrelation(
+        state::Vector{Float64},
+        operator::Matrix{Float64}
+    )
+    @assert length(state) == size(operator)[1]
+    state ./= norm(state)
+    return state' * operator * state
+end
+export GenCorrelation
+
+
 """
     reducedDM(state, reducingIndices)
 
