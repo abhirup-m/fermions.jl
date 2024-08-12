@@ -30,6 +30,17 @@ end
 export GenCorrelation
 
 
+function GenCorrelation(
+        state::Vector{Float64},
+        operator::Matrix{Float64}
+    )
+    @assert length(state) == size(operator)[1]
+    state ./= norm(state)
+    return state' * operator * state
+end
+export GenCorrelation
+
+
 """
     reducedDM(state, reducingIndices)
 
@@ -391,5 +402,52 @@ function SpecFunc(
     minimalEigVals = Float64[[gstateEnergy]; eigVals[excitedSector]; eigVals[excitedSectorDag];]
 
     return SpecFunc(minimalEigVals, minimalEigVecs, probe, probeDag, freqArray, broadening; gsIndex=1)
+end
+export SpecFunc
+
+
+"""
+    SpecFunc(eigVals, eigVecMatrix, probe, probeDiag, freqArray, broadening)
+
+Extends SpecFunc() by directly accepting matrices instead of abstract states and operators.
+Useful when the matrix representations are known but the basis is very complicated.
+"""
+function SpecFunc(
+    eigVals::Vector{Float64},
+    eigVecMatrix::Matrix{Float64},
+    probe::Matrix{Float64},
+    probeDag::Matrix{Float64},
+    freqArray::Vector{Float64},
+    broadening::Float64;
+    gsIndex::Int64=0,
+)
+
+    eigVecs = [collect(vec) for vec in eachcol(eigVecMatrix)]
+    @assert length(eigVals) == length(eigVecs)
+
+    if iszero(gsIndex)
+        energyGs = minimum(eigVals)
+        groundState = eigVecs[eigVals .== energyGs][1]
+    else
+        @assert gsIndex ≤ length(eigVals)
+        energyGs = eigVals[gsIndex]
+        groundState = eigVecs[gsIndex]
+    end
+
+    # calculate c_ν |GS>
+    excitedState = probe * groundState
+
+    # calculate c^†_ν |GS>
+    excitedStateDag = probeDag * groundState
+
+    # create array of frequency points and spectral function
+    specFunc = 0 .* freqArray
+    for (energy, state) in zip(eigVals, eigVecs)
+        particleWeight = (state' * excitedState)^2
+        specFunc .+= particleWeight * broadening ./ ((freqArray .- energyGs .+ energy) .^ 2 .+ broadening^2)
+        holeWeight = (state' * excitedStateDag)^2
+        specFunc .+= holeWeight * broadening ./ ((freqArray .+ energyGs .- energy) .^ 2 .+ broadening^2)
+    end
+    return specFunc
 end
 export SpecFunc

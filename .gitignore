@@ -1,4 +1,5 @@
 *.pdf
 data/*
+data-iterdiag/*
 .ipynb_checkpoints/*
 */build/**

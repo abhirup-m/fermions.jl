@@ -1,37 +1,36 @@
-@testset "Expand basis" begin
-    t = 1.0
-    U = 0.0
-    initBasis = BasisStates(4)
-    retainSize = 100
-    hamiltonianFamily = [dimerHamiltonian(U, t), dimerAdditionalHamiltonian(U, t, 3)]
-    numStatesFamily = Int64[2, 3]
-    hamiltonianMatrix = operatorMatrix(initBasis, hamiltonianFamily[1])
+@testset "Iter Diag" begin
+    realSites = 2
+    maxSize = 2
+    Ed = -1.
+    t = 1.
+    hamFlow = [
+               [
+               ("n", [1], Ed),
+              ]
+              ]
+    for site in 1:realSites
+        newTerm = [
+                   ("+-",  [site, site + 1], -t),
+                   ("+-",  [site + 1, site], -t),
+                  ]
+        push!(hamFlow, newTerm)
+    end
 
-    spectrum = getSpectrum(initBasis, hamiltonianMatrix; maxNum=retainSize)
-
-    basisStates = spectrum[2]
-    basisStates, diagElements = expandBasis(basisStates, numStatesFamily[2] - numStatesFamily[1], spectrum[1], retainSize)
-
-    @test isempty(setdiff(keys(basisStates), [(0, 0), (1/6, -1), (1/6, 1), (2/6, 0), (4/6, 0), (5/6, 1), (5/6, -1), (4/6, 2), (4/6, -2), (6/6, 0), (3/6, 3), (3/6, -3), (2/6, 2), (2/6, -2), (3/6, 1), (3/6, -1), (4/6, 2), (4/6, -2)]))
-    @test basisStates[(0, 0)] == [Dict([0, 0, 0, 0, 0, 0] => 1.0)]
-    @test basisStates[(1/6, -1)] == [Dict([0, 0, 0, 0, 0, 1] => 1.0), 
-                                     Dict([0, 1, 0, 0, 0, 0] => -1/2^0.5, [0, 0, 0, 1, 0, 0] => -1/2^0.5), 
-                                     Dict([0, 1, 0, 0, 0, 0] => -1/2^0.5, [0, 0, 0, 1, 0, 0] => 1/2^0.5)
-                                    ]
-    # @test basisStates[(1/6, 1)] == 
-    # @test basisStates[(2/6, 0)] == 
-    # @test basisStates[(4/6, 0)] == 
-    # @test basisStates[(5/6, 1)] == 
-    # @test basisStates[(5/6, -1)] == 
-    # @test basisStates[(4/6, 2)] == 
-    # @test basisStates[(4/6, -2)] == 
-    # @test basisStates[(6/6, 0)] == 
-    # @test basisStates[(3/6, 3)] == 
-    # @test basisStates[(3/6, -3)] == 
-    # @test basisStates[(2/6, 2)] == 
-    # @test basisStates[(2/6, -2)] == 
-    # @test basisStates[(3/6, 1)] == 
-    # @test basisStates[(3/6, -1)] == 
-    # @test basisStates[(4/6, 2)] == 
-    # @test basisStates[(4/6, -2)] == 
+    numSitesFlow = collect(1:1+realSites)
+    savePaths = IterDiag(hamFlow, maxSize);
+    files = [deserialize(path) for path in savePaths]
+    results = [Dict("rotation" => f["rotation"], "eigVals" => f["eigVals"]) for f in files]
+    @test results[1]["eigVals"] ≈ [Ed, 0]
+    @test results[1]["rotation"] ≈ [[0 1]; [1 0]]
+    F = eigen([[Ed 0 0 -t]; [0 Ed 0 0]; [0 0 0 0]; [-t 0 0 0]])
+    @test results[2]["eigVals"] ≈ F.values[1:2]
+    @test results[2]["rotation"] ≈ F.vectors[:, 1:2]
+    F = eigen([[results[2]["eigVals"][1] 0 0 0];
+             [0 results[2]["eigVals"][1] -t * F.vectors[:, 1][1] 0];
+               [0 -t * F.vectors[:, 1][1] results[2]["eigVals"][2] 0];
+               [0 0 0 results[2]["eigVals"][2]]
+              ]
+             )
+    @test results[3]["eigVals"] ≈ F.values[1:2]
+    @test results[3]["rotation"] ≈ F.vectors[:, 1:2]
 end
