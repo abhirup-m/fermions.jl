@@ -13,9 +13,10 @@ function IterDiag(
     dataDir::String="data-iterdiag",
 )
     @assert length(hamltFlow) > 1
-    currentSites = [opMembers for (_, opMembers, _) in hamltFlow[1]] |> V -> vcat(V...) |> unique |> sort
+    currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
     initBasis = BasisStates(maximum(currentSites))
     bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
+    println(size(bondAntiSymmzer), currentSites)
 
     saveId = randstring()
     rm(dataDir; recursive=true, force=true)
@@ -26,8 +27,8 @@ function IterDiag(
     hamltMatrix = diagm(fill(0.0, length(initBasis)))
 
     @showprogress for (step, hamlt) in enumerate(hamltFlow)
-        hamltMatrix += TensorProduct(hamlt, basicMats)
-        F = eigen(0.5 * (hamltMatrix + hamltMatrix'))
+        @time hamltMatrix += TensorProduct(hamlt, basicMats)
+        @time F = eigen(0.5 * (hamltMatrix + hamltMatrix'))
         retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
 
         # ensure we aren't truncating in the middle of degenerate states
@@ -61,13 +62,14 @@ function IterDiag(
         for (k,v) in collect(basicMats)
             basicMats[k] = kron(rotation' * v * rotation, identityEnv)
         end
-
+        println(step, size(hamltMatrix), size(rotation))
+        
         # rotate the antisymmetrizer matrix
         bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
 
         # absorb the qbit operators for the new sites
         for site in newSites for type in ('+', '-', 'n', 'h')
-                basicMats[(type, site)] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [(string(type), [site - length(currentSites)], 1.0)]))
+            basicMats[(type, site)] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [(string(type), [site - length(currentSites)], 1.0)]))
             end
         end
 
@@ -120,6 +122,10 @@ function TensorProduct(
         operator::Vector{Tuple{String,Vector{Int64},Float64}},
         basicMats::Dict{Tuple{Char, Int64}, Matrix{Float64}},
     )
-    totalMat = sum([opStrength * prod([basicMats[pair] for pair in zip(opType, opMembers)]) for (opType, opMembers, opStrength) in operator])
+    totalMat = 0 .* collect(values(basicMats))[1]
+    for (opType, opMembers, opStrength) in operator
+        totalMat += opStrength * prod([basicMats[pair] for pair in zip(opType, opMembers)])
+    end
+    return totalMat
 end
 export TensorProduct
