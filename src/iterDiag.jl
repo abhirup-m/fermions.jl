@@ -9,14 +9,13 @@ the basis of these Ns states, then diagonalises it, etc.
 function IterDiag(
     hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
     maxSize::Int64;
-    degenTol::Float64=1e-5,
+    degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
 )
     @assert length(hamltFlow) > 1
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
     initBasis = BasisStates(maximum(currentSites))
     bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
-    println(size(bondAntiSymmzer), currentSites)
 
     saveId = randstring()
     rm(dataDir; recursive=true, force=true)
@@ -27,18 +26,18 @@ function IterDiag(
     hamltMatrix = diagm(fill(0.0, length(initBasis)))
 
     @showprogress for (step, hamlt) in enumerate(hamltFlow)
-        @time hamltMatrix += TensorProduct(hamlt, basicMats)
-        @time F = eigen(0.5 * (hamltMatrix + hamltMatrix'))
+        hamltMatrix += TensorProduct(hamlt, basicMats)
+        F = eigen(0.5 * (hamltMatrix + hamltMatrix'))
         retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
 
         # ensure we aren't truncating in the middle of degenerate states
-        for energy in F.values[retainStates+1:end]
-            if abs(energy - F.values[retainStates]) > degenTol
-                break
-            else
-                retainStates += 1
-            end
-        end
+        # for energy in F.values[retainStates+1:end]
+        #     if abs(1 - F.values[retainStates] / energy) > degenTol
+        #         break
+        #     else
+        #         retainStates += 1
+        #     end
+        # end
 
         rotation = F.vectors[:, 1:retainStates]
         eigVals = F.values[1:retainStates]
@@ -62,7 +61,6 @@ function IterDiag(
         for (k,v) in collect(basicMats)
             basicMats[k] = kron(rotation' * v * rotation, identityEnv)
         end
-        println(step, size(hamltMatrix), size(rotation))
         
         # rotate the antisymmetrizer matrix
         bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
