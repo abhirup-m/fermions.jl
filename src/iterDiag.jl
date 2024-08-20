@@ -31,13 +31,13 @@ function IterDiag(
         retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
 
         # ensure we aren't truncating in the middle of degenerate states
-        # for energy in F.values[retainStates+1:end]
-        #     if abs(1 - F.values[retainStates] / energy) > degenTol
-        #         break
-        #     else
-        #         retainStates += 1
-        #     end
-        # end
+        for energy in F.values[retainStates+1:end]
+            if abs(1 - F.values[retainStates] / energy) > degenTol
+                break
+            else
+                retainStates += 1
+            end
+        end
 
         rotation = F.vectors[:, 1:retainStates]
         eigVals = F.values[1:retainStates]
