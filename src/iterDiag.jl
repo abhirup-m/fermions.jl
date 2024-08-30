@@ -74,35 +74,26 @@ function IterDiag(
 
         # rotate fermionic operators and large symmetriser
         # to be consistent with current basis
-        # println([join(trunc.(Int, [real(state' * basicMats[('n', site)] * state) for site in currentSites])) for state in eachcol(basis)])
         for (k, v) in basicMats
             basicMats[k] = basis' * v * basis
         end
-        # println([join(trunc.(Int, [real(state' * basicMats[('n', site)] * state) for site in currentSites])) for state in eachcol(basis)])
         bondAntiSymmzer = basis' * bondAntiSymmzer * basis
 
         # get rotated+truncated basis for each symmetry sector
         componentBasis = Dict(k => zeros(length(v), length(v)) for (k, v) in sectorTable)
         eigValsTable = Dict(k => []  for k in keys(sectorTable))
         hamltMatrix += TensorProduct(hamlt, basicMats)
-        totalNumOperator = sum([basicMats[('n', site)] for site in currentSites])
-        println(maximum(abs.(hamltMatrix * totalNumOperator - totalNumOperator * hamltMatrix)))
-        # Threads.@threads 
-        for (k, v) in collect(sectorTable)
-            projector = zeros(size(basis)[2], length(v))
-            for (i, c) in enumerate(v)
-                projector[c, i] = 1.
-            end
-            F = eigen(projector' * hamltMatrix * projector)
-            totOcc = [real(state' * projector' * totalNumOperator * projector * state) for state in eachcol(F.vectors)]
+
+        Threads.@threads for (k, v) in collect(sectorTable)
+            hamiltonBlock = hamltMatrix[v,v]
+            F = eigen(hamiltonBlock)
             retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
             eigValsTable[k] = real(F.values[1:retainStates])
             componentBasis[k] = real.(F.vectors[:, 1:retainStates])
-            # println(k, v)
         end
+
         # join small basis from each sector into complete basis
         basis, eigVals, sectorTable = JoinBasis(componentBasis, eigValsTable, sectorTable)
-        # display(sectorTable)
 
         serialize(savePaths[step], Dict("operators" => basicMats, "basis" => basis, "eigVals" => eigValsTable, "sectorTable" => sectorTable))
 
@@ -132,8 +123,8 @@ function IterDiag(
         for site in additionalSites
             basicMats[('+', site)] = kron(bondAntiSymmzer, OperatorMatrix(additionalBasis, [("+", [site - length(currentSites)], 1.0)]))
             basicMats[('-', site)] = basicMats[('+', site)]'
-            basicMats[('n', site)] = basicMats[('+', site)] * basicMats[('+', site)]'
-            basicMats[('h', site)] = basicMats[('+', site)]' * basicMats[('+', site)]
+            basicMats[('n', site)] = basicMats[('+', site)] * basicMats[('-', site)]
+            basicMats[('h', site)] = basicMats[('-', site)] * basicMats[('+', site)]
         end
         
         # expand the antisymmetrizer
