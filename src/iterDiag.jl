@@ -51,7 +51,7 @@ function IterDiag(
     degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
 )
-    @assert length(hamltFlow) > 1
+    # @assert length(hamltFlow) > 1
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
     basis = BasisStates(maximum(currentSites))
 
@@ -83,6 +83,7 @@ function IterDiag(
         componentBasis = Dict(k => zeros(length(v), length(v)) for (k, v) in sectorTable)
         eigValsTable = Dict(k => []  for k in keys(sectorTable))
         hamltMatrix += TensorProduct(hamlt, basicMats)
+        display(eigen(hamltMatrix).values[1:5])
 
         Threads.@threads for (k, v) in collect(sectorTable)
             hamiltonBlock = hamltMatrix[v,v]
