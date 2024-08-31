@@ -1,30 +1,31 @@
 using Serialization, Random, LinearAlgebra, ProgressMeter
 
 
-function ArrangeBasis(rotation, totalNumOperator)
-    totOcc = [state' * totalNumOperator * state for state in eachcol(rotation)]
-    @assert all(x -> isapprox(round(Int, x), x, atol=1e-10), totOcc)
-    totOcc = round.(Int, totOcc)
-    permutationOperator = zeros(length(totOcc), length(totOcc))
-    for (col, row) in enumerate(sortperm(totOcc))
+function ArrangeBasis(rotation::Matrix{Float64}, totalOccCurrent::Vector{Int64}, totalOccAdditional::Vector{Int64})
+    totalOccUpdated = vcat([occ1 .+ totalOccAdditional for occ1 in totalOccCurrent]...)
+    @assert all(x -> isapprox(x, Int(x)), round.(totalOccUpdated, digits=10))
+    totalOccUpdated = round.(Int, totalOccUpdated)
+    permutationOperator = zeros(length(totalOccUpdated), length(totalOccUpdated))
+    for (col, row) in enumerate(sortperm(totalOccUpdated))
         permutationOperator[row, col] = 1
     end
     sectorTable = Dict{Int64, Vector{Int64}}()
-    for (i, occ) in enumerate(sort(totOcc))
-        if occ ∉ keys(sectorTable)
-            sectorTable[occ] = [i]
+    for (i, totalOcc) in enumerate(sort(totalOccUpdated))
+        if totalOcc ∉ keys(sectorTable)
+            sectorTable[totalOcc] = [i]
         else
-            push!(sectorTable[occ], i)
+            push!(sectorTable[totalOcc], i)
         end
     end
-    return permutationOperator, sectorTable
+    return permutationOperator, sectorTable, totalOccUpdated
 end
 
 
-function JoinBasis(componentBasis, eigValsTable, sectorTable, hamltMatrix)
+function JoinBasis(componentBasis, eigValsTable, sectorTable)
     totalNumRows = values(componentBasis) .|> size .|> first |> sum
     totalNumCols = values(componentBasis) .|> size .|> last |> sum
     basis = zeros(totalNumRows, totalNumCols)
+    totalOccCurrent = Int64[]
     eigVals = Float64[]
     rowTailPosition = 1
     colTailPosition = 1
@@ -36,8 +37,9 @@ function JoinBasis(componentBasis, eigValsTable, sectorTable, hamltMatrix)
         append!(eigVals, eigValsTable[k])
         rowTailPosition += size(componentBasis[k])[1]
         colTailPosition += size(componentBasis[k])[2]
+        append!(totalOccCurrent, repeat([k], length(eigValsTable[k])))
     end
-    return basis, eigVals, sectorTable
+    return basis, eigVals, sectorTable, totalOccCurrent
 end
 
 """Main function for iterative diagonalisation. Gives the approximate low-energy
@@ -68,11 +70,14 @@ function IterDiag(
                                                           for site in currentSites for type in ('+', '-', 'n', 'h'))
     hamltMatrix = diagm(fill(0.0, length(initBasis)))
     rotation = diagm(ones(2^length(currentSites)))
+
+    totalNumOperator = sum([basicMats[('n', site)] for site in currentSites])
+    totalOccCurrent = [round(Int, state' * totalNumOperator * state) for state in eachcol(rotation)]
+    totalOccAdditional = [0]
     for (step, hamlt) in enumerate(hamltFlow)
 
         # permute basis to bring into block-diagonal form
-        totalNumOperator = sum([basicMats[('n', site)] for site in currentSites])
-        permutationOperator, sectorTable = ArrangeBasis(rotation, totalNumOperator)
+        permutationOperator, sectorTable, totalOccCurrent = ArrangeBasis(rotation, totalOccCurrent, totalOccAdditional)
         hamltMatrix = permutationOperator' * hamltMatrix * permutationOperator
 
         rotation = rotation * permutationOperator
@@ -82,7 +87,6 @@ function IterDiag(
         for (k, v) in basicMats
             basicMats[k] = rotation' * v * rotation
         end
-        totalNumOperator = sum([basicMats[('n', site)] for site in currentSites])
         bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
 
         # get rotated+truncated basis for each symmetry sector
@@ -90,20 +94,16 @@ function IterDiag(
         eigValsTable = Dict(k => Float64[]  for k in keys(sectorTable))
         hamltMatrix += TensorProduct(hamlt, basicMats)
 
-        Threads.@threads for (k, v) in collect(sectorTable)
+        for (k, v) in collect(sectorTable)
             hamiltonBlock = hamltMatrix[v,v]
             F = eigen(Hermitian(hamiltonBlock))
             retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
             eigValsTable[k] = real(F.values[1:retainStates])
             componentBasis[k] = real.(F.vectors[:, 1:retainStates])
-
-            @assert all(x -> isapprox(x, k, atol=1e-10), [state' * totalNumOperator[v,v] * state
-                                  for state in eachcol(F.vectors[:, 1:retainStates])]
-                       )
         end
 
         # join small basis from each sector into complete basis
-        rotation, eigVals, sectorTable = JoinBasis(componentBasis, eigValsTable, sectorTable, hamltMatrix)
+        rotation, eigVals, sectorTable, totalOccCurrent = JoinBasis(componentBasis, eigValsTable, sectorTable)
 
         serialize(savePaths[step], Dict("operators" => basicMats, "basis" => rotation, "eigVals" => eigValsTable, "sectorTable" => sectorTable))
 
@@ -112,11 +112,15 @@ function IterDiag(
         end
 
         additionalSites = [setdiff(opMembers, currentSites) for (_, opMembers, _) in hamltFlow[step+1]] |> V -> vcat(V...) |> unique |> sort
-        additionalBasis = BasisStates(length(additionalSites))
-
         # identity matrix for the sites being added. will be `kron'ed
         # with the operators of the current sites to expand them.
         identityEnv = length(additionalSites) == 1 ? I(2) : kron(fill(I(2), length(additionalSites))...)
+
+        additionalBasis = BasisStates(length(additionalSites))
+        basicMatsAdditional = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(additionalBasis, [(string(type), [site], 1.0)]) 
+                                                                        for (site, _) in enumerate(additionalSites) for type in ('+', '-', 'n', 'h'))
+        totalNumAdditional = sum([basicMatsAdditional[('n', site)] for (site, _) in enumerate(additionalSites)])
+        totalOccAdditional = [round(Int, state' * totalNumAdditional * state) for state in eachcol(identityEnv)]
 
         # expand the basis
         rotation = kron(rotation, identityEnv)
@@ -141,6 +145,8 @@ function IterDiag(
         bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(additionalSites))...)
         
         append!(currentSites, additionalSites)
+
+        totalNumOperator = sum([basicMats[('n', site)] for site in currentSites])
     end
     return savePaths
 end

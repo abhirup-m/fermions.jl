@@ -1,7 +1,7 @@
 using fermions, Plots, Measures
 include("../src/iterDiag.jl")
 
-realSites = 4
+realSites = 5
 initSites = 1
 maxSize = 500
 V = 1.1
