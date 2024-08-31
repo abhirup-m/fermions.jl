@@ -1,12 +1,14 @@
 using Serialization, Random, LinearAlgebra, ProgressMeter
 
 
-function ArrangeBasis(basis, hamltMatrix, totalNumOperator)
-    totOcc = [state' * totalNumOperator * state for state in eachcol(basis)]
+function ArrangeBasis(rotation, totalNumOperator)
+    totOcc = [state' * totalNumOperator * state for state in eachcol(rotation)]
     @assert all(x -> isapprox(round(Int, x), x, atol=1e-10), totOcc)
     totOcc = round.(Int, totOcc)
-    basis = basis[:, sortperm(totOcc)]
-    hamltMatrix = hamltMatrix[:, sortperm(totOcc)]
+    permutationOperator = zeros(length(totOcc), length(totOcc))
+    for (col, row) in enumerate(sortperm(totOcc))
+        permutationOperator[row, col] = 1
+    end
     sectorTable = Dict{Int64, Vector{Int64}}()
     for (i, occ) in enumerate(sort(totOcc))
         if occ ∉ keys(sectorTable)
@@ -15,11 +17,11 @@ function ArrangeBasis(basis, hamltMatrix, totalNumOperator)
             push!(sectorTable[occ], i)
         end
     end
-    return basis, hamltMatrix, sectorTable
+    return permutationOperator, sectorTable
 end
 
 
-function JoinBasis(componentBasis, eigValsTable, sectorTable)
+function JoinBasis(componentBasis, eigValsTable, sectorTable, hamltMatrix)
     totalNumRows = values(componentBasis) .|> size .|> first |> sum
     totalNumCols = values(componentBasis) .|> size .|> last |> sum
     basis = zeros(totalNumRows, totalNumCols)
@@ -27,12 +29,13 @@ function JoinBasis(componentBasis, eigValsTable, sectorTable)
     rowTailPosition = 1
     colTailPosition = 1
     for k in sort(collect(keys(componentBasis)))
-        matrix = componentBasis[k]
-        sectorTable[k] = rowTailPosition:rowTailPosition+size(matrix)[1]-1
-        basis[rowTailPosition:rowTailPosition+size(matrix)[1]-1, colTailPosition:colTailPosition+size(matrix)[2]-1] .= matrix
+        sectorTable[k] = colTailPosition:colTailPosition+size(componentBasis[k])[2]-1
+        basis[rowTailPosition:rowTailPosition+size(componentBasis[k])[1]-1, 
+              colTailPosition:colTailPosition+size(componentBasis[k])[2]-1
+             ] .= componentBasis[k]
         append!(eigVals, eigValsTable[k])
-        rowTailPosition += size(matrix)[1]
-        colTailPosition += size(matrix)[2]
+        rowTailPosition += size(componentBasis[k])[1]
+        colTailPosition += size(componentBasis[k])[2]
     end
     return basis, eigVals, sectorTable
 end
@@ -53,7 +56,7 @@ function IterDiag(
 )
     # @assert length(hamltFlow) > 1
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
-    basis = BasisStates(maximum(currentSites))
+    initBasis = BasisStates(maximum(currentSites))
 
     bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
 
@@ -61,42 +64,48 @@ function IterDiag(
     rm(dataDir; recursive=true, force=true)
     mkpath(dataDir)
     savePaths = [joinpath(dataDir, "$(saveId)-$(j)") for j in 1:length(hamltFlow)]
-    basicMats = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(basis, [(string(type), [site], 1.0)]) 
+    basicMats = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(initBasis, [(string(type), [site], 1.0)]) 
                                                           for site in currentSites for type in ('+', '-', 'n', 'h'))
-    hamltMatrix = diagm(fill(0.0, length(basis)))
-    lastEnergy = 0
-    basis = diagm(ones(2^length(currentSites)))
+    hamltMatrix = diagm(fill(0.0, length(initBasis)))
+    rotation = diagm(ones(2^length(currentSites)))
     for (step, hamlt) in enumerate(hamltFlow)
 
         # permute basis to bring into block-diagonal form
         totalNumOperator = sum([basicMats[('n', site)] for site in currentSites])
-        basis, hamltMatrix, sectorTable = ArrangeBasis(basis, hamltMatrix, totalNumOperator)
+        permutationOperator, sectorTable = ArrangeBasis(rotation, totalNumOperator)
+        hamltMatrix = permutationOperator' * hamltMatrix * permutationOperator
+
+        rotation = rotation * permutationOperator
 
         # rotate fermionic operators and large symmetriser
         # to be consistent with current basis
         for (k, v) in basicMats
-            basicMats[k] = basis' * v * basis
+            basicMats[k] = rotation' * v * rotation
         end
-        bondAntiSymmzer = basis' * bondAntiSymmzer * basis
+        totalNumOperator = sum([basicMats[('n', site)] for site in currentSites])
+        bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
 
         # get rotated+truncated basis for each symmetry sector
         componentBasis = Dict(k => zeros(length(v), length(v)) for (k, v) in sectorTable)
-        eigValsTable = Dict(k => []  for k in keys(sectorTable))
+        eigValsTable = Dict(k => Float64[]  for k in keys(sectorTable))
         hamltMatrix += TensorProduct(hamlt, basicMats)
-        display(eigen(hamltMatrix).values[1:5])
 
         Threads.@threads for (k, v) in collect(sectorTable)
             hamiltonBlock = hamltMatrix[v,v]
-            F = eigen(hamiltonBlock)
+            F = eigen(Hermitian(hamiltonBlock))
             retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
             eigValsTable[k] = real(F.values[1:retainStates])
             componentBasis[k] = real.(F.vectors[:, 1:retainStates])
+
+            @assert all(x -> isapprox(x, k, atol=1e-10), [state' * totalNumOperator[v,v] * state
+                                  for state in eachcol(F.vectors[:, 1:retainStates])]
+                       )
         end
 
         # join small basis from each sector into complete basis
-        basis, eigVals, sectorTable = JoinBasis(componentBasis, eigValsTable, sectorTable)
+        rotation, eigVals, sectorTable = JoinBasis(componentBasis, eigValsTable, sectorTable, hamltMatrix)
 
-        serialize(savePaths[step], Dict("operators" => basicMats, "basis" => basis, "eigVals" => eigValsTable, "sectorTable" => sectorTable))
+        serialize(savePaths[step], Dict("operators" => basicMats, "basis" => rotation, "eigVals" => eigValsTable, "sectorTable" => sectorTable))
 
         if step == length(hamltFlow)
             break
@@ -109,11 +118,11 @@ function IterDiag(
         # with the operators of the current sites to expand them.
         identityEnv = length(additionalSites) == 1 ? I(2) : kron(fill(I(2), length(additionalSites))...)
 
+        # expand the basis
+        rotation = kron(rotation, identityEnv)
+
         # expanded diagonal hamiltonian
         hamltMatrix = kron(diagm(eigVals), identityEnv)
-
-        # expand the basis
-        basis = kron(basis, identityEnv)
         
         # rotate and enlarge qubit operators of current system
         for (k,v) in collect(basicMats)
@@ -143,8 +152,6 @@ function IterCorrelation(savePath, corrDef, occupancy)
     basicMats = f["operators"]
     basis = f["basis"]
     indices = f["sectorTable"][occupancy]
-    display(f["eigVals"][occupancy][1])
-    # println(indices)
     groundState = basis[:,indices[1]]
     corrOperator = TensorProduct(corrDef, basicMats)
     return GenCorrelation(groundState, corrOperator)

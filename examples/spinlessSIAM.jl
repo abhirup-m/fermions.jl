@@ -1,28 +1,31 @@
 using fermions, Plots, Measures
 include("../src/iterDiag.jl")
 
-realSites = 2
-initSites = 1
 maxSize = 100
 V = 1.
-t = V
+t = 2.
+E = 1.
+occupancy = 2
 
-hamFlow = Vector{Tuple{String, Vector{Int64}, Float64}}[]
-initHam = [
-           [("+-",  [i, i+1], -V) for i in 1:initSites];
-           [("+-",  [i+1, i], -V) for i in 1:initSites];
+hamFlow = [
+           [
+            ("+-",  [1, 2], -V),
+            ("+-",  [2, 1], -V),
+           ],
+           [
+            ("+-",  [2, 3], -t),
+            ("+-",  [3, 2], -t),
+           ],
           ]
-push!(hamFlow, initHam)
-for site in initSites+1:realSites
-    newTerm = [
-               ("+-",  [site, site + 1], -t),
-               ("+-",  [site + 1, site], -t),
-               ("+-",  [site + 1, site + 2], -t),
-               ("+-",  [site + 2, site + 1], -t),
-              ]
-    push!(hamFlow, newTerm)
-end
-
 savePaths = IterDiag(hamFlow, maxSize);
-println("------------")
-display([IterCorrelation(path, [("+-",  [1, 2], 1.)], i) for (i, path) in enumerate(savePaths)])
+f = deserialize(savePaths[end])
+basicMats = f["operators"]
+rotation = f["basis"]
+eigVals = f["eigVals"]
+display(eigVals)
+
+basis = BasisStates(3)
+fullHam = vcat(hamFlow...)
+fullMatrix = OperatorMatrix(basis, fullHam)
+E, X = eigen(fullMatrix)
+display(E)
