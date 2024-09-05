@@ -1,6 +1,21 @@
 using Serialization, Random, LinearAlgebra, ProgressMeter
 
 
+function TensorProduct(
+        operator::Vector{Tuple{String,Vector{Int64},Float64}},
+        basicMats::Dict{Tuple{Char, Int64}, Matrix{Float64}},
+    )
+    totalMat = sum([
+                    (opStrength * 
+                     prod([basicMats[(o, m)] for (o, m) in zip(opType, opMembers)]) 
+                    )
+                   for (opType, opMembers, opStrength) in operator]
+                  )
+    return totalMat
+end
+export TensorProduct
+
+
 function ArrangeBasis(rotation::Matrix{Float64}, totalOccCurrent::Vector{Int64}, totalOccAdditional::Vector{Int64})
     totalOccUpdated = vcat([occ1 .+ totalOccAdditional for occ1 in totalOccCurrent]...)
     @assert all(x -> isapprox(x, Int(x)), round.(totalOccUpdated, digits=10))
@@ -21,7 +36,7 @@ function ArrangeBasis(rotation::Matrix{Float64}, totalOccCurrent::Vector{Int64},
 end
 
 
-function JoinBasis(componentBasis, eigValsTable, sectorTable)
+function JoinBasis(componentBasis, eigValsTable, numSectors::Int64)
     totalNumRows = values(componentBasis) .|> size .|> first |> sum
     totalNumCols = values(componentBasis) .|> size .|> last |> sum
     basis = zeros(totalNumRows, totalNumCols)
@@ -29,18 +44,33 @@ function JoinBasis(componentBasis, eigValsTable, sectorTable)
     eigVals = Float64[]
     rowTailPosition = 1
     colTailPosition = 1
+    sectorTable = Dict{Int64, Vector{Int64}}()
+
+    minEigVals = Dict(k => minimum(v) for (k, v) in eigValsTable)
+    if numSectors > 0
+        minEigValKeep = sort(collect(values(minEigVals)))[minimum((length(minEigVals), numSectors))]
+    else
+        minEigValKeep = maximum(collect(values(minEigVals)))
+    end
+    retainSectors = []
     for k in sort(collect(keys(componentBasis)))
         sectorTable[k] = colTailPosition:colTailPosition+size(componentBasis[k])[2]-1
         basis[rowTailPosition:rowTailPosition+size(componentBasis[k])[1]-1, 
               colTailPosition:colTailPosition+size(componentBasis[k])[2]-1
              ] .= componentBasis[k]
-        append!(eigVals, eigValsTable[k])
+        if minEigVals[k] ≤ minEigValKeep
+            append!(eigVals, eigValsTable[k])
+            append!(totalOccCurrent, repeat([k], length(eigValsTable[k])))
+            append!(retainSectors, collect(colTailPosition:colTailPosition+size(componentBasis[k])[2]-1))
+        end
         rowTailPosition += size(componentBasis[k])[1]
         colTailPosition += size(componentBasis[k])[2]
-        append!(totalOccCurrent, repeat([k], length(eigValsTable[k])))
     end
+
+    basis = basis[:, retainSectors]
     return basis, eigVals, sectorTable, totalOccCurrent
 end
+
 
 """Main function for iterative diagonalisation. Gives the approximate low-energy
 spectrum of a hamiltonian through the following algorithm: first diagonalises a
@@ -51,6 +81,89 @@ the basis of these Ns states, then diagonalises it, etc.
 function IterDiag(
     hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
     maxSize::Int64;
+    degenTol::Float64=1e-10,
+    dataDir::String="data-iterdiag",
+)
+    @assert length(hamltFlow) > 1
+    currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
+    initBasis = BasisStates(maximum(currentSites))
+    bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
+
+    saveId = randstring()
+    rm(dataDir; recursive=true, force=true)
+    mkpath(dataDir)
+    savePaths = [joinpath(dataDir, "$(saveId)-$(j)") for j in 1:length(hamltFlow)]
+    push!(savePaths, joinpath(dataDir, "metadata"))
+    basicMats = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) =>
+                                                                OperatorMatrix(initBasis, [(string(type), [site], 1.0)]) 
+                                                                for site in currentSites for type in ('+', '-', 'n', 'h')
+                                                               )
+
+    serialize(savePaths[end], Dict("basicMats" => basicMats, "initSites" => currentSites))
+
+    hamltMatrix = diagm(fill(0.0, 2^length(currentSites)))
+
+    @showprogress for (step, hamlt) in enumerate(hamltFlow)
+        hamltMatrix += TensorProduct(hamlt, basicMats)
+        F = eigen(Hermitian(hamltMatrix))
+        retainStates = ifelse(length(F.values) < maxSize, length(F.values), maxSize)
+
+        # ensure we aren't truncating in the middle of degenerate states
+        for energy in F.values[retainStates+1:end]
+            if abs(1 - F.values[retainStates] / energy) > degenTol
+                break
+            else
+                retainStates += 1
+            end
+        end
+
+        rotation = F.vectors[:, 1:retainStates]
+
+
+        if step == length(hamltFlow)
+            serialize(savePaths[step], Dict("basis" => rotation, "eigVals" => F.values))
+            break
+        end
+
+        newSites = [setdiff(opMembers, currentSites) for (_, opMembers, _) in hamltFlow[step+1]] |> V -> vcat(V...) |> unique |> sort
+        newBasis = BasisStates(length(newSites))
+
+        serialize(savePaths[step], Dict("basis" => rotation, "eigVals" => F.values, "newSites" => newSites))
+
+        # identity matrix for the sites being added. will be `kron'ed
+        # with the operators of the current sites to expand them.
+        identityEnv = length(newSites) == 1 ? I(2) : kron(fill(I(2), length(newSites))...)
+
+        # expanded diagonal hamiltonian
+        hamltMatrix = kron(diagm(F.values[1:retainStates]), identityEnv)
+
+        # rotate and enlarge qubit operators of current system
+        for (k,v) in collect(basicMats)
+            basicMats[k] = kron(rotation' * v * rotation, identityEnv)
+        end
+        # @time map!(x -> kron(rotation' * x * rotation, identityEnv), values(basicMats))
+
+        # rotate the antisymmetrizer matrix
+        bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
+
+        # absorb the qbit operators for the new sites
+        for site in newSites for type in ['+', '-', 'n', 'h']
+                basicMats[(type, site)] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [(string(type), [site - length(currentSites)], 1.0)]))
+        end end
+
+        # expand the antisymmetrizer
+        bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSites))...)
+
+        append!(currentSites, newSites)
+    end
+    return savePaths
+end
+export IterDiag
+
+function IterDiagSymm(
+    hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
+    maxSize::Int64;
+    numSectors::Int64=0,
     canonicalError::Float64=1e-10,
     symmetries::Vector{Char}=['N'],
     degenTol::Float64=1e-10,
@@ -74,6 +187,9 @@ function IterDiag(
     totalNumOperator = sum([basicMats[('n', site)] for site in currentSites])
     totalOccCurrent = [round(Int, state' * totalNumOperator * state) for state in eachcol(rotation)]
     totalOccAdditional = [0]
+    numAdditional = 0
+    additionalBasis = []
+    basicMatsAdditional = []
     for (step, hamlt) in enumerate(hamltFlow)
 
         # permute basis to bring into block-diagonal form
@@ -84,7 +200,7 @@ function IterDiag(
 
         # rotate fermionic operators and large symmetriser
         # to be consistent with current basis
-        for (k, v) in basicMats
+        for (k, v) in collect(basicMats)
             basicMats[k] = rotation' * v * rotation
         end
         bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
@@ -103,9 +219,9 @@ function IterDiag(
         end
 
         # join small basis from each sector into complete basis
-        rotation, eigVals, sectorTable, totalOccCurrent = JoinBasis(componentBasis, eigValsTable, sectorTable)
+        rotation, eigVals, sectorTable, totalOccCurrent = JoinBasis(componentBasis, eigValsTable, numSectors)
 
-        serialize(savePaths[step], Dict("operators" => basicMats, "basis" => rotation, "eigVals" => eigValsTable, "sectorTable" => sectorTable))
+        serialize(savePaths[step], Dict("operators" => basicMats, "basis" => rotation, "eigvals" => eigValsTable, "sectorTable" => sectorTable))
 
         if step == length(hamltFlow)
             break
@@ -115,12 +231,16 @@ function IterDiag(
         # identity matrix for the sites being added. will be `kron'ed
         # with the operators of the current sites to expand them.
         identityEnv = length(additionalSites) == 1 ? I(2) : kron(fill(I(2), length(additionalSites))...)
+        
+        if length(additionalSites) != numAdditional
+            additionalBasis = BasisStates(length(additionalSites))
+            numAdditional = length(additionalSites)
 
-        additionalBasis = BasisStates(length(additionalSites))
-        basicMatsAdditional = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(additionalBasis, [(string(type), [site], 1.0)]) 
-                                                                        for (site, _) in enumerate(additionalSites) for type in ('+', '-', 'n', 'h'))
-        totalNumAdditional = sum([basicMatsAdditional[('n', site)] for (site, _) in enumerate(additionalSites)])
-        totalOccAdditional = [round(Int, state' * totalNumAdditional * state) for state in eachcol(identityEnv)]
+            basicMatsAdditional = Dict{Tuple{Char, Int64}, Matrix{Float64}}((type, site) => OperatorMatrix(additionalBasis, [(string(type), [site], 1.0)]) 
+                                                                            for (site, _) in enumerate(additionalSites) for type in ('+', '-', 'n', 'h'))
+            totalNumAdditional = sum([basicMatsAdditional[('n', site)] for (site, _) in enumerate(additionalSites)])
+            totalOccAdditional = [round(Int, state' * totalNumAdditional * state) for state in eachcol(identityEnv)]
+        end
 
         # expand the basis
         rotation = kron(rotation, identityEnv)
@@ -129,13 +249,13 @@ function IterDiag(
         hamltMatrix = kron(diagm(eigVals), identityEnv)
         
         # rotate and enlarge qubit operators of current system
-        for (k,v) in collect(basicMats)
+        Threads.@threads for (k,v) in collect(basicMats)
             basicMats[k] = kron(v, identityEnv)
         end
 
         # expand the qbit operators for the additional sites into the old system
-        for site in additionalSites
-            basicMats[('+', site)] = kron(bondAntiSymmzer, OperatorMatrix(additionalBasis, [("+", [site - length(currentSites)], 1.0)]))
+        Threads.@threads for (i, site) in collect(enumerate(additionalSites))
+            basicMats[('+', site)] = kron(bondAntiSymmzer, basicMatsAdditional[('+', i)])
             basicMats[('-', site)] = basicMats[('+', site)]'
             basicMats[('n', site)] = basicMats[('+', site)] * basicMats[('-', site)]
             basicMats[('h', site)] = basicMats[('-', site)] * basicMats[('+', site)]
@@ -150,15 +270,39 @@ function IterDiag(
     end
     return savePaths
 end
-export IterDiag
+export IterDiagSymm
 
 
-function IterCorrelation(savePath, corrDef, occupancy)
+function IterCorrelation(savePaths::Vector{String}, corrDef::Vector{Tuple{String, Vector{Int64}, Float64}})
+    corrVals = Float64[]
+    participatingMembers = unique(vcat([m for (_, m, _) in corrDef]...))
+    metadata = deserialize(savePaths[end])
+    basicMats = metadata["basicMats"]
+    corrOperator = TensorProduct(corrDef, basicMats)
+    for (step, savePath) in enumerate(savePaths[1:end-1])
+        f = deserialize(savePath)
+        basis = f["basis"]
+        eigVals = f["eigVals"]
+        gstate = basis[:,argmin(eigVals)]
+        push!(corrVals, gstate' * corrOperator * gstate)
+        if step < length(savePaths) - 1
+            newSites = f["newSites"]
+            identityEnv = length(newSites) == 1 ? I(2) : kron(fill(I(2), length(newSites))...)
+            corrOperator = kron(basis' * corrOperator * basis, identityEnv)
+        end
+    end
+    return corrVals
+end
+export IterCorrelation
+
+
+function IterCorrelation(savePath::String, corrDef::Vector{Tuple{String, Vector{Int64}, Float64}}, occupancy::Float64)
     f = deserialize(savePath)
     basicMats = f["operators"]
     basis = f["basis"]
     indices = f["sectorTable"][occupancy]
-    groundState = basis[:,indices[1]]
+    eigVals = f["eigvals"][occupancy]
+    groundState = basis[:,indices[argmin(eigVals)]]
     corrOperator = TensorProduct(corrDef, basicMats)
     return GenCorrelation(groundState, corrOperator)
 end
@@ -186,16 +330,3 @@ function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
     return specfuncFlow, freqArray
 end
 export IterSpecFunc
-
-
-function TensorProduct(
-        operator::Vector{Tuple{String,Vector{Int64},Float64}},
-        basicMats::Dict{Tuple{Char, Int64}, Matrix{Float64}},
-    )
-    totalMat = 0 .* collect(values(basicMats))[1]
-    for (opType, opMembers, opStrength) in operator
-        totalMat += opStrength * prod([basicMats[pair] for pair in zip(opType, opMembers)])
-    end
-    return totalMat
-end
-export TensorProduct
