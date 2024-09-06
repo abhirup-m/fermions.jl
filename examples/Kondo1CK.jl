@@ -1,30 +1,24 @@
-using fermions, Plots, Measures
+using fermions, Plots, Measures, BenchmarkTools
 theme(:dark)
 include("../src/iterDiag.jl")
 
-realSites = 7
-initSites = 1
-maxSize = 50
-V = 1.1
-t = 1.1
-U = 1.
+realSites = 18
+initSites = 3
+J = 1.0
+t = 1.0
+occupancy = 2
 
 function getHamFlow(initSites, realSites)
     hamFlow = Vector{Tuple{String, Vector{Int64}, Float64}}[]
     initHam = [
-               [("n", [1], -U/2)];
-               [("n", [2], -U/2)];
-               [("nn", [1, 2], U)];
-               [("+-",  [i, i+2], -V) for i in 1:2*initSites];
-               [("+-",  [i+2, i], -V) for i in 1:2*initSites];
+               [("+-",  [i, i+1], -V) for i in 1:initSites];
+               [("+-",  [i+1, i], -V) for i in 1:initSites];
               ]
     push!(hamFlow, initHam)
     for site in initSites+1:realSites
         newTerm = [
-                   ("+-",  [2 * site - 1, 2 * site + 1], -t),
-                   ("+-",  [2 * site + 1, 2 * site - 1], -t),
-                   ("+-",  [2 * site, 2 * site + 2], -t),
-                   ("+-",  [2 * site + 2, 2 * site], -t),
+                   ("+-",  [site, site + 1], -t),
+                   ("+-",  [site + 1, site], -t),
                   ]
         push!(hamFlow, newTerm)
     end
@@ -32,37 +26,28 @@ function getHamFlow(initSites, realSites)
 end
 
 hamFlow = getHamFlow(initSites, realSites)
-savePaths = IterDiag(hamFlow, maxSize);
-corrdef = [("+-+-", [1,2,4,3], 1.0)]
-corrFlow = IterCorrelation(savePaths, corrdef)
+p1 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="spin-flip corr.")
+p2 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="energy per site")
+corrdef = [("+-", [1,2], 1.0), ("+-", [2,1], 1.0)]
+for maxSize in [30, 100, 800]
+    savePaths = IterDiag(hamFlow, maxSize; symmetries=Char['N'], occReq=(x,N)->ifelse(0 ≤ x ≤ 4, true, false))
+    corrFlow, energypersite = IterCorrelation(savePaths, corrdef; occupancy=occupancy)
+    scatter!(p1, initSites:realSites, corrFlow, label="M=$(maxSize)")
+    scatter!(p2, initSites:realSites, energypersite, label="M=$(maxSize)")
+end
 
 corrExact = []
-for num in initSites:realSites
-    basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq = [-1, 0, 1])
-    fullHam = vcat(hamFlow[initSites:num]...)
+energyExact = []
+@showprogress for (i, num) in enumerate(initSites:realSites)
+    basis = BasisStates(1 + num; totOccReq=[occupancy])
+    fullHam = vcat(hamFlow[1:i]...)
     fullMatrix = OperatorMatrix(basis, fullHam)
     F = eigen(fullMatrix)
     push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, corrdef) * F.vectors[:, 1])
+    push!(energyExact, minimum(F.values)/(1 + num))
 end
 
-p = scatter(initSites:realSites, corrFlow, thickness_scaling=2, leftmargin=-12mm, bottommargin=-6mm, label="approx.", xlabel="sites", ylabel="spin-flip corr.")
-plot!(initSites:realSites, corrExact, thickness_scaling=2, label="exact")
-savefig(p, "corr.pdf")
-
-# realSites = 30
-# hamFlow = getHamFlow(initSites, realSites)
-# savePaths = IterDiag(hamFlow, 200);
-# energypersite = []
-# for (step, savePath) in enumerate(savePaths[1:end-1])
-#     f = deserialize(savePath)
-#     basis = f["basis"]
-#     eigVals = f["eigVals"]
-#     push!(energypersite, eigVals[1] / (step + 1))
-# end
-# p = scatter(initSites:realSites, energypersite, thickness_scaling=1.6, leftmargin=-12mm, bottommargin=-6mm, xlabel="sites", ylabel="energy per site")
-# savefig(p, "energy.pdf")
-# 
-# corrdef = [("+-+-", [1,2,4,3], 1.0)]
-# corrFlow = IterCorrelation(savePaths, corrdef)
-# p = scatter(initSites:realSites, corrFlow, thickness_scaling=1.6, leftmargin=-12mm, bottommargin=-6mm, xlabel="sites", ylabel="spin-flip corr.")
-# savefig(p, "corrApprox.pdf")
+plot!(p1, initSites:realSites, corrExact, label="exact", linewidth=2)
+plot!(p2, initSites:realSites, energyExact, label="exact", linewidth=2)
+savefig(p1, "spinflipcomparison.pdf")
+savefig(p2, "energy.pdf")
