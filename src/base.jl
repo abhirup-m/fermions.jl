@@ -329,6 +329,16 @@ end
 export StateOverlap
 
 
+function ExpandIntoBasis(
+        state::Dict{BitVector,Float64}, 
+        basisStates::Vector{Dict{BitVector,Float64}},
+    )
+    coefficients = fetch.([Threads.@spawn StateOverlap(bstate, state) for bstate in basisStates])
+    return coefficients
+end
+export ExpandIntoBasis
+
+
 function GetSector(
         state::Dict{BitVector, Float64}, 
         symmetries::Vector{Char},
