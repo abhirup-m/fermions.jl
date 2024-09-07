@@ -3,32 +3,32 @@ theme(:dark)
 
 include("../src/thermalisation.jl")
 
-onsite = 2.
+t = 1.
+U = 2.
 
-function HamiltonianAndState(numSites, onsite)
-    @assert numSites % 2 == 0
+function HamiltonianAndState(numSites)
+    @assert (2 + numSites) % 2 == 0
     hamiltonian = [
-                   [("n", [i], onsite) for i in 1:numSites];
-                   [("+-", [i, i+1], -1.0) for i in 1:(numSites-1)];
-                   [("+-", [i+1, i], -1.0) for i in 1:(numSites-1)]
+                   [("nn", [1, 2], U)];
+                   [("+-", [i, i+1], -t) for i in 1:numSites+1];
+                   [("+-", [i+1, i], -t) for i in 1:numSites+1];
                   ]
-    initState = Dict(Bool.(vcat(repeat([1], div(numSites, 2)), 
-                                repeat([0], div(numSites, 2)))
-                          ) => 1.0
+    initState = Dict(Bool.([ifelse(i % 2 == 0, 1, 0) for i in 1:2+numSites]) => 1.0
                     )
     return hamiltonian, initState
 end
 
-localOperator = [("n", [1], 1.0)]
-localOperator2 = [("n", [2], 1.0)]
+impOccOperator = [("n", [2], 1.0)]#, ("n", [1], 1.0)]
+bathLocalOccOperator = [("n", [3], 1.0)]#, ("n", [4], 1.0)]
 hopOperator = [("+-", [1, 2], 1.0), ("+-", [2, 1], 1.0)]
 p1 = [] 
 p2 = []
-for numSites in [2, 6, 10]
-    hamiltonian, initState = HamiltonianAndState(numSites, onsite)
-    basisStates = BasisStates(numSites)
-    @time occTimeEvol, timeVals, operatorMatrixTimeVol, hamiltonianMatrix, basisStates = OperatorTimeEvol(localOperator, hamiltonian, initState, basisStates, 0.1, 500; occupancy=div(numSites, 2))
-    staticOperatorMatrix = OperatorMatrix(basisStates, localOperator2)
+for numSites in [2, 4, 6, 12]
+    hamiltonian, initState = HamiltonianAndState(numSites)
+    basisStates = BasisStates(2 + numSites, totOccReq=div(2 + numSites, 2))
+    hamiltonianMatrix = OperatorMatrix(basisStates, hamiltonian)
+    @time occTimeEvol, timeVals, operatorMatrixTimeVol = OperatorTimeEvol(impOccOperator, hamiltonian, initState, basisStates, 0.1, 100)
+    staticOperatorMatrix = OperatorMatrix(basisStates, bathLocalOccOperator)
     @time otoc = OTOC(operatorMatrixTimeVol, staticOperatorMatrix, hamiltonianMatrix)
     push!(p1, plot(timeVals, occTimeEvol, label="\$N_s=$(numSites)\$"))
     push!(p2, plot(timeVals, otoc, label="\$N_s=$(numSites)\$"))
