@@ -16,62 +16,6 @@ end
 export TensorProduct
 
 
-function ArrangeBasis(rotation::Matrix{Float64}, totalOccCurrent::Vector{Int64}, totalOccAdditional::Vector{Int64})
-    totalOccUpdated = vcat([occ1 .+ totalOccAdditional for occ1 in totalOccCurrent]...)
-    @assert all(x -> isapprox(x, Int(x)), round.(totalOccUpdated, digits=10))
-    totalOccUpdated = round.(Int, totalOccUpdated)
-    permutationOperator = zeros(length(totalOccUpdated), length(totalOccUpdated))
-    for (col, row) in enumerate(sortperm(totalOccUpdated))
-        permutationOperator[row, col] = 1
-    end
-    sectorTable = Dict{Int64, Vector{Int64}}()
-    for (i, totalOcc) in enumerate(sort(totalOccUpdated))
-        if totalOcc ∉ keys(sectorTable)
-            sectorTable[totalOcc] = [i]
-        else
-            push!(sectorTable[totalOcc], i)
-        end
-    end
-    return permutationOperator, sectorTable, totalOccUpdated
-end
-
-
-function JoinBasis(componentBasis, eigValsTable, numSectors::Int64)
-    totalNumRows = values(componentBasis) .|> size .|> first |> sum
-    totalNumCols = values(componentBasis) .|> size .|> last |> sum
-    basis = zeros(totalNumRows, totalNumCols)
-    totalOccCurrent = Int64[]
-    eigVals = Float64[]
-    rowTailPosition = 1
-    colTailPosition = 1
-    sectorTable = Dict{Int64, Vector{Int64}}()
-
-    minEigVals = Dict(k => minimum(v) for (k, v) in eigValsTable)
-    if numSectors > 0
-        minEigValKeep = sort(collect(values(minEigVals)))[minimum((length(minEigVals), numSectors))]
-    else
-        minEigValKeep = maximum(collect(values(minEigVals)))
-    end
-    retainSectors = []
-    for k in sort(collect(keys(componentBasis)))
-        sectorTable[k] = colTailPosition:colTailPosition+size(componentBasis[k])[2]-1
-        basis[rowTailPosition:rowTailPosition+size(componentBasis[k])[1]-1, 
-              colTailPosition:colTailPosition+size(componentBasis[k])[2]-1
-             ] .= componentBasis[k]
-        if minEigVals[k] ≤ minEigValKeep
-            append!(eigVals, eigValsTable[k])
-            append!(totalOccCurrent, repeat([k], length(eigValsTable[k])))
-            append!(retainSectors, collect(colTailPosition:colTailPosition+size(componentBasis[k])[2]-1))
-        end
-        rowTailPosition += size(componentBasis[k])[1]
-        colTailPosition += size(componentBasis[k])[2]
-    end
-
-    basis = basis[:, retainSectors]
-    return basis, eigVals, sectorTable, totalOccCurrent
-end
-
-
 """Main function for iterative diagonalisation. Gives the approximate low-energy
 spectrum of a hamiltonian through the following algorithm: first diagonalises a
 Hamiltonian with few degrees of freedom, retains a fixed Ns number of low-energy

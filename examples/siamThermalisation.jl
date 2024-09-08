@@ -37,4 +37,3 @@ p1 = plot(p1..., layout=(length(p1), 1), linewidth=2, thickness_scaling=2.1, siz
 p2 = plot(p2..., layout=(length(p2), 1), linewidth=2, thickness_scaling=2.1, size=(800, 1500), leftmargin=-6mm, bottommargin=-4mm, ylabel="\$\\langle [n_1(t), n_2(0)]^2\\rangle\$", xlabel="time \$(t)\$")
 savefig(p1, "occupancyTime.pdf")
 savefig(p2, "otoc.pdf")
-
