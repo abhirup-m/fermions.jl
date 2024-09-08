@@ -103,6 +103,21 @@ end
 export BasisStates
 
 
+function BasisStates1p(
+        numLevels::Int64, 
+    )
+    config = BitVector(fill(0, numLevels))
+    config[1] = 1
+    basis = Dict{BitVector,Float64}[]
+    for shift in 1:numLevels
+        push!(basis, Dict(copy(config) => 1.0))
+        circshift!(config, 1)
+    end
+    return basis
+end
+export BasisStates1p
+
+
 """
     TransformBit(qubit, operator)
 
