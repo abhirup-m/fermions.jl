@@ -5,12 +5,10 @@ function TensorProduct(
         operator::Vector{Tuple{String,Vector{Int64},Float64}},
         basicMats::Dict{Tuple{Char, Int64}, Matrix{Float64}},
     )
-    totalMat = sum([
-                    (opStrength * 
-                     prod([basicMats[(o, m)] for (o, m) in zip(opType, opMembers)]) 
-                    )
-                   for (opType, opMembers, opStrength) in operator]
-                  )
+    totalMat = zeros(size(basicMats[('+', 1)])...)
+    for (opType, opMembers, opStrength) in operator
+        totalMat += opStrength * prod([basicMats[(o, m)] for (o, m) in zip(opType, opMembers)]) 
+    end
     return totalMat
 end
 export TensorProduct
@@ -36,7 +34,6 @@ function IterDiag(
     bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
 
     saveId = randstring()
-    rm(dataDir; recursive=true, force=true)
     mkpath(dataDir)
     savePaths = [joinpath(dataDir, "$(saveId)-$(j)") for j in 1:length(hamltFlow)]
     push!(savePaths, joinpath(dataDir, "metadata"))
@@ -62,6 +59,10 @@ function IterDiag(
                 rotation[indices, indices] .= F.vectors
                 eigVals[indices] .= F.values
             end
+            sortSequence = sortperm(eigVals)
+            rotation = rotation[:, sortperm(eigVals)]
+            totalOcc = totalOcc[sortperm(eigVals)]
+            eigVals = sort(eigVals)
         else
             F = eigen(Hermitian(hamltMatrix))
             rotation .= F.vectors
@@ -75,15 +76,22 @@ function IterDiag(
 
         if isnothing(occReq) && length(eigVals) > maxSize
             # ensure we aren't truncating in the middle of degenerate states
-            rotation = rotation[:, eigVals .≤ eigVals[maxSize] * (1 + degenTol)]
-            totalOcc = totalOcc[eigVals .≤ eigVals[maxSize] * (1 + degenTol)]
-            eigVals = eigVals[eigVals .≤ eigVals[maxSize] * (1 + degenTol)]
+            rotation = rotation[:, eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
+            totalOcc = totalOcc[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
+            eigVals = eigVals[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
         end
         if !isnothing(occReq) && length(eigVals) > maxSize
-            retainBasisVectors = findall(x -> occReq(x, maximum(currentSites)), totalOcc)
-            if length(retainBasisVectors) > maxSize
-                retainBasisVectors = retainBasisVectors[1:maxSize]
+            retainBasisVectors = []
+            for reqOcc in unique(totalOcc)[findall(x -> occReq(x, maximum(currentSites)), unique(totalOcc))]
+                indices = findall(==(reqOcc), totalOcc)
+                if length(indices) > maxSize
+                    indices = indices[1:maxSize]
+                end
+                append!(retainBasisVectors, indices)
             end
+            # if length(retainBasisVectors) > maxSize
+            #     retainBasisVectors = retainBasisVectors[1:maxSize]
+            # end
             rotation = rotation[:, retainBasisVectors]
             totalOcc = totalOcc[retainBasisVectors]
             eigVals = eigVals[retainBasisVectors]
