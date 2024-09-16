@@ -29,9 +29,11 @@ hamFlow = getHamFlow(initSites, realSites)
 p1 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="\$\\langle c^\\dagger_0 c_1 + \\mathrm{h.c.} \\rangle\$")
 p2 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="energy per site")
 corrdef = [("+-", [1, 2], 1.0), ("+-", [2, 1], 1.0)]
+exactPoints = 1:2:11
 for maxSize in [10, 50]
     savePaths = IterDiag(hamFlow, maxSize; symmetries=Char['N'], occReq=(x,N)->ifelse(0 ≤ x ≤ 2, true, false))
     corrFlow, energypersite = IterCorrelation(savePaths, corrdef; occupancy=occupancy)
+    println(energypersite[exactPoints] .* (1 .+ exactPoints))
     scatter!(p1, initSites:realSites, corrFlow, label="\$M_s=$(maxSize)\$")
     scatter!(p2, initSites:realSites, -1 .* energypersite .* (1 .+ (initSites:realSites)), label="\$M_s=$(maxSize)\$")
 end
@@ -44,10 +46,11 @@ energyExact = []
     fullMatrix = OperatorMatrix(basis, fullHam)
     F = eigen(fullMatrix)
     push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, corrdef) * F.vectors[:, 1])
-    push!(energyExact, minimum(F.values)/(1 + num))
+    push!(energyExact, minimum(F.values))
 end
+println(energyExact[exactPoints])
 
 plot!(p1, initSites:realSites, corrExact, label="exact", linewidth=2, yscale=:log10)
-plot!(p2, initSites:realSites, -1 .* energyExact .* (1 .+ (initSites:realSites)), label="exact", linewidth=2, yscale=:log10)
+plot!(p2, initSites:realSites, -1 .* energyExact, label="exact", linewidth=2, yscale=:log10)
 savefig(p1, "spinflipcomparison.pdf")
 savefig(p2, "energy.pdf")
