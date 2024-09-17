@@ -89,7 +89,7 @@ function IterDiag(
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
     initBasis = BasisStates(maximum(currentSites))
     bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
-    create, basket = UpdateRequirements(hamltFlow)
+    create, basket, newSitesFlow = UpdateRequirements(hamltFlow)
 
     saveId = randstring()
     mkpath(dataDir)
@@ -114,15 +114,16 @@ function IterDiag(
         push!(symmetryOperators, sum([(-1)^(1 + i) * operators[("n", [i])] for i in currentSites]))
     end
 
-    newSites = Int64[]
-    operators = CreateProductOperator(create[1], operators, newSites)
+    operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
+
+    energyPerSite = Float64[]
     @showprogress for (step, hamlt) in enumerate(hamltFlow)
-        @time for (type, members, strength) in hamlt
+        for (type, members, strength) in hamlt
             hamltMatrix += strength * operators[(type, members)]
         end
         rotation = zeros(size(hamltMatrix)...)
         eigVals = zeros(size(hamltMatrix)[2])
-        @time if !isempty(quantumNos)
+        if !isempty(quantumNos)
             for qantumNo in unique(quantumNos)
                 indices = findall(==(qantumNo), quantumNos)
                 F = eigen(Hermitian(hamltMatrix[indices, indices]))
@@ -138,6 +139,7 @@ function IterDiag(
             rotation .= F.vectors
             eigVals .= F.values
         end
+        push!(energyPerSite, eigVals[1]/maximum(currentSites))
 
         if isempty(quantumNos) && !isempty(symmetries)
             quantumNos = [Tuple(round(Int, col' * operator * col) for operator in symmetryOperators) 
@@ -171,22 +173,26 @@ function IterDiag(
             serialize(savePaths[step], Dict("basis" => rotation,
                                             "eigVals" => eigVals,
                                             "quantumNos" => quantumNos,
-                                            "currentSites" => currentSites)
+                                            "currentSites" => currentSites,
+                                            "newSites" => newSitesFlow[step],
+                                            "bondAntiSymmzer" => bondAntiSymmzer,
+                                           )
                      )
             break
         end
 
-        newSites = [setdiff(opMembers, currentSites) for (_, opMembers, _) in hamltFlow[step+1]] |> V -> vcat(V...) |> unique |> sort
-        newBasis = BasisStates(length(newSites))
+        newBasis = BasisStates(length(newSitesFlow[step+1]))
 
-        identityEnv = length(newSites) == 1 ? I(2) : kron(fill(I(2), length(newSites))...)
+        identityEnv = length(newSitesFlow[step+1]) == 1 ? I(2) : kron(fill(I(2), length(newSitesFlow[step+1]))...)
 
         serialize(savePaths[step], Dict("basis" => rotation,
                                         "eigVals" => eigVals,
-                                        "newSites" => newSites,
                                         "quantumNos" => quantumNos,
+                                        "currentSites" => currentSites,
+                                        "newSites" => newSitesFlow[step],
+                                        "bondAntiSymmzer" => bondAntiSymmzer,
                                         "identityEnv" => identityEnv,
-                                        "currentSites" => currentSites)
+                                       )
                  )
 
         # expanded diagonal hamiltonian
@@ -201,17 +207,17 @@ function IterDiag(
         end
 
         # define the qbit operators for the new sites
-        for site in newSites 
+        for site in newSitesFlow[step+1] 
             operators[("+", [site])] = OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)])
             operators = CreateDNH(operators, site)
         end
 
         newSymmetryOperators = []
         if 'N' in symmetries
-            push!(newSymmetryOperators, sum([operators[("n", [i])] for i in newSites]))
+            push!(newSymmetryOperators, sum([operators[("n", [i])] for i in newSitesFlow[step+1]]))
         end
         if 'S' in symmetries
-            push!(newSymmetryOperators, sum([(-1)^(1 + i) * operators[("n", [i])] for i in newSites]))
+            push!(newSymmetryOperators, sum([(-1)^(1 + i) * operators[("n", [i])] for i in newSitesFlow[step+1]]))
         end
 
         if !isempty(symmetries)
@@ -224,29 +230,32 @@ function IterDiag(
 
         # expand new operators
         bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
-        @time for site in newSites 
+        for site in newSitesFlow[step+1] 
             operators[("+", [site])] = kron(bondAntiSymmzer, operators[("+", [site])])
             operators = CreateDNH(operators, site)
         end
 
-        @time operators = CreateProductOperator(create[step+1], operators, newSites)
+        operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
 
         # expand the antisymmetrizer
-        bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSites))...)
+        bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSitesFlow[step+1]))...)
 
-        append!(currentSites, newSites)
-        println("-------")
+        append!(currentSites, newSitesFlow[step+1])
     end
-    return savePaths
+    return savePaths, energyPerSite
 end
 export IterDiag
 
 
-function IterCorrelation(savePaths::Vector{String}, 
+function IterCorrelation(
+        savePaths::Vector{String}, 
         corrDef::Vector{Tuple{String, Vector{Int64}, Float64}};
         occReq::Union{Nothing, Function}=nothing,
         magzReq::Union{Nothing, Function}=nothing,
     )
+
+    newSitesFlow = [deserialize(savePath)["newSites"] for savePath in savePaths[1:end-1]]
+    create, basket, newSitesFlow = UpdateRequirements(corrDef, newSitesFlow)
 
     quantumNoReq = nothing
     if !isnothing(occReq) && isnothing(magzReq)
@@ -271,31 +280,51 @@ function IterCorrelation(savePaths::Vector{String},
         operators[("+", [site])] = OperatorMatrix(metadata["initBasis"], [("+", [site], 1.0)])
         operators = CreateDNH(operators, site)
     end
-    
-    corrOperator = sum([coupling .* prod([operators[(string(t), [s])] for (t,s) in zip(type, sites)]) for (type, sites, coupling) in corrDef])
+    operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
 
-    energyPerSite = []
+    corrOperator = nothing
+    if all(∈(keys(operators)), [(type, members) for (type, members, _) in corrDef])
+        corrOperator = sum([coupling * operators[(type, members)] for (type, members, coupling) in corrDef])
+    end
+    
     for (step, savePath) in enumerate(savePaths[1:end-1])
         f = deserialize(savePath)
         basis = f["basis"]
         eigVals = f["eigVals"]
         quantumNos = f["quantumNos"]
         currentSites = f["currentSites"]
-        if isnothing(quantumNoReq)
-            gstate = basis[:,argmin(eigVals)]
-            push!(energyPerSite, minimum(eigVals)/maximum(currentSites))
+        if !isnothing(corrOperator)
+            if isnothing(quantumNoReq)
+                gstate = basis[:,argmin(eigVals)]
+            else
+                indices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
+                gstate = basis[:, indices][:,argmin(eigVals[indices])]
+            end
+            push!(corrVals, gstate' * corrOperator * gstate)
+            if step < length(savePaths) - 1
+                corrOperator = kron(basis' * corrOperator * basis, f["identityEnv"])
+            end
         else
-            indices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
-            gstate = basis[:, indices][:,argmin(eigVals[indices])]
-            push!(energyPerSite, minimum(eigVals[indices])/maximum(currentSites))
-        end
-        push!(corrVals, gstate' * corrOperator * gstate)
-        if step < length(savePaths) - 1
-            identityEnv = f["identityEnv"]
-            corrOperator = kron(basis' * corrOperator * basis, identityEnv)
+            for (k, v) in collect(operators)
+                operators[k] = kron(basis' * v * basis, f["identityEnv"])
+            end
+
+            newBasis = BasisStates(length(newSitesFlow[step+1]))
+
+            # define the qbit operators for the new sites
+            for site in newSitesFlow[step+1] 
+                operators[("+", [site])] = kron(basis' * f["bondAntiSymmzer"] * basis, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
+                operators = CreateDNH(operators, site)
+            end
+
+            operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
+            if all(∈(keys(operators)), [(type, members) for (type, members, _) in corrDef])
+                corrOperator = sum([coupling * operators[(type, members)] for (type, members, coupling) in corrDef])
+            end
+
         end
     end
-    return corrVals, energyPerSite
+    return corrVals
 end
 export IterCorrelation
 
@@ -323,21 +352,18 @@ end
 export IterSpecFunc
 
 
-function UpdateRequirements(hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}})
+function UpdateRequirements(
+        hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
+        newSitesFlow::Vector{Vector{Int64}},
+    )
     basket = Vector{Tuple{String,Vector{Int64}}}[[] for _ in hamltFlow]
     create = Vector{Tuple{String,Vector{Int64}}}[[] for _ in hamltFlow]
-    currentSites = Int64[]
-    newSitesFlow = Vector{Int64}[]
-    for (step, hamlt) in enumerate(hamltFlow)
-        newSites = [setdiff(opMembers, currentSites) for (_, opMembers, _) in hamlt] |> V -> vcat(V...) |> unique |> sort
-        push!(newSitesFlow, newSites)
-        append!(currentSites, newSites)
-    end
 
     for step in reverse(eachindex(hamltFlow))
         newSites = newSitesFlow[step]
-        currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[step]])))
-        append!(create[step], [(type, members) for (type, members, _) in hamltFlow[step]])
+        if !isempty(hamltFlow[step])
+            append!(create[step], [(type, members) for (type, members, _) in hamltFlow[step]])
+        end
         if step < length(hamltFlow)
             for (type, members) in basket[step+1]
                 if !isempty(intersect(members, newSites))
@@ -356,5 +382,35 @@ function UpdateRequirements(hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},
         end
         basket[step] = unique(basket[step])
     end
-    return create, basket
+    return create, basket, newSitesFlow
 end
+export UpdateRequirements
+
+
+function UpdateRequirements(
+        hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
+    )
+    currentSites = Int64[]
+    newSitesFlow = Vector{Int64}[]
+    for (step, hamlt) in enumerate(hamltFlow)
+        newSites = [setdiff(opMembers, currentSites) for (_, opMembers, _) in hamlt] |> V -> vcat(V...) |> unique |> sort
+        push!(newSitesFlow, newSites)
+        append!(currentSites, newSites)
+    end
+
+    return UpdateRequirements(hamltFlow, newSitesFlow)
+end
+export UpdateRequirements
+
+
+function UpdateRequirements(
+        operator::Vector{Tuple{String,Vector{Int64},Float64}},
+        newSitesFlow::Vector{Vector{Int64}},
+    )
+    currentSites = Int64[]
+    operatorMaxMember = maximum([maximum(members) for (_, members, _) in operator])
+    operatorFlow = [ifelse(operatorMaxMember ∈ newSites, operator, Tuple{String,Vector{Int64},Float64}[]) for newSites in newSitesFlow]
+
+    return UpdateRequirements(operatorFlow, newSitesFlow)
+end
+export UpdateRequirements
