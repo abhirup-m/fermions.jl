@@ -2,12 +2,12 @@ using fermions, Plots, Measures, BenchmarkTools
 theme(:dark)
 include("../src/iterDiag.jl")
 
-totalSites = 12
+totalSites = 5
 initSites = 1
-kondoJ = abs(rand())
+kondoJ = 2.
 bathInt = -1.5
-maxSize = 200
-dispersion = sort(rand(totalSites) .^ 2)
+maxSize = 150
+dispersion = [ifelse(i % 2 == 1, -1., 1.) for i in 1:totalSites]
 
 function getHamFlow(initSites::Int64, totalSites::Int64, dispersion::Vector{Float64}, kondoJ::Float64, bathInt::Float64)
     hamFlow = Vector{Tuple{String, Vector{Int64}, Float64}}[]
@@ -70,8 +70,15 @@ hamFlow = getHamFlow(initSites, totalSites, dispersion, kondoJ, bathInt)
 p1 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="\$\\langle S_d^+ S_{k_1}^- + \\mathrm{h.c.} \\rangle\$")
 p2 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="energy per site")
 corrdef = [("+-+-", [1, 2, 4, 3], 1.0), ("+-+-", [2, 1, 3, 4], 1.0)]
-savePaths = IterDiag(hamFlow, maxSize; symmetries=Char['N'], occReq=(x, N) -> ifelse(0 ≤ x ≤ 4, true, false))
-corrFlow, energypersite = IterCorrelation(savePaths, corrdef; occupancy=(x, N) -> x == 2)
+savePaths = IterDiag(hamFlow, maxSize;
+                     symmetries=Char['N', 'S'],
+                     # symmetries=Char['S'],
+                     # symmetries=Char['N'],
+                     magzReq=(m, N) -> -2 ≤ m ≤ 2,
+                     occReq=(x, N) -> div(N, 2) - 5 ≤ x ≤ div(N, 2) + 5,
+                    ) 
+
+corrFlow, energypersite = IterCorrelation(savePaths, corrdef; occReq=(x, N) -> x == div(N, 2))
 display(energypersite)
 display(corrFlow)
 scatter!(p1, initSites:totalSites, corrFlow, label="\$M_s=$(maxSize)\$")
@@ -80,12 +87,14 @@ scatter!(p2, initSites:totalSites, energypersite, label="\$M_s=$(maxSize)\$")
 corrExact = []
 energyExact = []
 @showprogress for (i, num) in enumerate(initSites:totalSites)
-    basis = BasisStates(2 * (1 + num); totOccReq=[2], magzReq=[0], localCriteria=x->x[1]+x[2]==1)
+    basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[-1, 0, 1], localCriteria=x->x[1]+x[2]==1)
     fullHam = vcat(hamFlow[1:i]...)
     fullMatrix = OperatorMatrix(basis, fullHam)
     # display(OperatorMatrix(basis, [("+h", [2, 1], 1.)]))
     # println("----")
     F = eigen(fullMatrix)
+    totalNum = OperatorMatrix(basis, [("n", [i], 1.) for i in 1:2*(1+num)])
+    display(F.vectors[:, 1]' * totalNum * F.vectors[:, 1])
     push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, corrdef) * F.vectors[:, 1])
     push!(energyExact, minimum(F.values)/(2*(1 + num)))
 end

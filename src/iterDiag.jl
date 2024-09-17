@@ -62,12 +62,30 @@ the basis of these Ns states, then diagonalises it, etc.
 function IterDiag(
     hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
     maxSize::Int64;
-    occReq::Union{Nothing,Function}=nothing,#(x,N)->ifelse(div(N,2)-2 ≤ x ≤ div(N,2)+2, true, false),
+    occReq::Union{Nothing,Function}=nothing,#(o,N)->ifelse(div(N,2)-2 ≤ o ≤ div(N,2)+2, true, false), ## close to half-filling
+    magzReq::Union{Nothing,Function}=nothing,#(m,N)->ifelse(m == N, true, false), ## maximally polarised states
     symmetries::Vector{Char}=Char[],
     degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
 )
     @assert length(hamltFlow) > 1
+    @assert all(∈("NS"), symmetries)
+    if !isnothing(occReq)
+        @assert 'N' in symmetries
+    end
+    if !isnothing(magzReq)
+        @assert 'S' in symmetries
+    end
+
+    quantumNoReq = nothing
+    if !isnothing(occReq) && isnothing(magzReq)
+        quantumNoReq = (q, N) -> occReq(q[1], N)
+    elseif isnothing(occReq) && !isnothing(magzReq)
+        quantumNoReq = (q, N) -> magzReq(q[1], N)
+    elseif !isnothing(occReq) && !isnothing(magzReq)
+        quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
+    end
+    
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
     initBasis = BasisStates(maximum(currentSites))
     bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
@@ -77,7 +95,7 @@ function IterDiag(
     mkpath(dataDir)
     savePaths = [joinpath(dataDir, "$(saveId)-$(j)") for j in 1:length(hamltFlow)]
     push!(savePaths, joinpath(dataDir, "metadata"))
-    serialize(savePaths[end], Dict("initBasis" => initBasis, "initSites" => currentSites))
+    serialize(savePaths[end], Dict("initBasis" => initBasis, "initSites" => currentSites, "symmetries" => symmetries))
 
     operators = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
     for site in currentSites 
@@ -87,27 +105,33 @@ function IterDiag(
 
     hamltMatrix = diagm(fill(0.0, 2^length(currentSites)))
 
-    totalOcc = Int64[]
-    totalNumOperator = sum([operators[("n", [i])] for i in currentSites])
+    quantumNos = NTuple{length(symmetries), Int64}[]
+    symmetryOperators = Matrix{Float64}[]
+    if 'N' in symmetries
+        push!(symmetryOperators, sum([operators[("n", [i])] for i in currentSites]))
+    end
+    if 'S' in symmetries
+        push!(symmetryOperators, sum([(-1)^(1 + i) * operators[("n", [i])] for i in currentSites]))
+    end
 
     newSites = Int64[]
     operators = CreateProductOperator(create[1], operators, newSites)
     @showprogress for (step, hamlt) in enumerate(hamltFlow)
-        for (type, members, strength) in hamlt
+        @time for (type, members, strength) in hamlt
             hamltMatrix += strength * operators[(type, members)]
         end
         rotation = zeros(size(hamltMatrix)...)
         eigVals = zeros(size(hamltMatrix)[2])
-        if !isempty(totalOcc) && 'N' in symmetries
-            for occ in unique(totalOcc)
-                indices = findall(==(occ), totalOcc)
+        @time if !isempty(quantumNos)
+            for qantumNo in unique(quantumNos)
+                indices = findall(==(qantumNo), quantumNos)
                 F = eigen(Hermitian(hamltMatrix[indices, indices]))
                 rotation[indices, indices] .= F.vectors
                 eigVals[indices] .= F.values
             end
             sortSequence = sortperm(eigVals)
             rotation = rotation[:, sortperm(eigVals)]
-            totalOcc = totalOcc[sortperm(eigVals)]
+            quantumNos = quantumNos[sortperm(eigVals)]
             eigVals = sort(eigVals)
         else
             F = eigen(Hermitian(hamltMatrix))
@@ -115,20 +139,23 @@ function IterDiag(
             eigVals .= F.values
         end
 
-        if isempty(totalOcc)
-            totalOcc = [round(Int, col' * totalNumOperator * col) for col in eachcol(rotation)]
+        if isempty(quantumNos) && !isempty(symmetries)
+            quantumNos = [Tuple(round(Int, col' * operator * col) for operator in symmetryOperators) 
+                          for col in eachcol(rotation)]
         end
 
-        if isnothing(occReq) && length(eigVals) > maxSize
+        if isnothing(quantumNoReq) && length(eigVals) > maxSize
             # ensure we aren't truncating in the middle of degenerate states
             rotation = rotation[:, eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
-            totalOcc = totalOcc[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
+            if !isempty(quantumNos)
+                quantumNos = quantumNos[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
+            end
             eigVals = eigVals[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
         end
-        if !isnothing(occReq) && length(eigVals) > maxSize
+        if !isnothing(quantumNoReq) && length(eigVals) > maxSize
             retainBasisVectors = []
-            for reqOcc in unique(totalOcc)[findall(x -> occReq(x, maximum(currentSites)), unique(totalOcc))]
-                indices = findall(==(reqOcc), totalOcc)
+            for sector in unique(quantumNos)[findall(q -> quantumNoReq(q, maximum(currentSites)), unique(quantumNos))]
+                indices = findall(==(sector), quantumNos)
                 if length(indices) > maxSize
                     indices = indices[1:maxSize]
                 end
@@ -136,12 +163,16 @@ function IterDiag(
             end
 
             rotation = rotation[:, retainBasisVectors]
-            totalOcc = totalOcc[retainBasisVectors]
+            quantumNos = quantumNos[retainBasisVectors]
             eigVals = eigVals[retainBasisVectors]
         end
 
         if step == length(hamltFlow)
-            serialize(savePaths[step], Dict("basis" => rotation, "eigVals" => eigVals, "occupancy" => totalOcc, "currentSites" => currentSites))
+            serialize(savePaths[step], Dict("basis" => rotation,
+                                            "eigVals" => eigVals,
+                                            "quantumNos" => quantumNos,
+                                            "currentSites" => currentSites)
+                     )
             break
         end
 
@@ -150,18 +181,23 @@ function IterDiag(
 
         identityEnv = length(newSites) == 1 ? I(2) : kron(fill(I(2), length(newSites))...)
 
-        serialize(savePaths[step], Dict("basis" => rotation, "eigVals" => eigVals, "newSites" => newSites, "occupancy" => totalOcc, "identityEnv" => identityEnv, "currentSites" => currentSites))
+        serialize(savePaths[step], Dict("basis" => rotation,
+                                        "eigVals" => eigVals,
+                                        "newSites" => newSites,
+                                        "quantumNos" => quantumNos,
+                                        "identityEnv" => identityEnv,
+                                        "currentSites" => currentSites)
+                 )
 
         # expanded diagonal hamiltonian
         hamltMatrix = kron(diagm(eigVals), identityEnv)
 
         # rotate and enlarge qubit operators of current system
-        for (k,v) in collect(operators)
-            if k in basket[step+1]
-                operators[k] = kron(rotation' * v * rotation, identityEnv)
-            else
-                delete!(operators, k)
-            end
+        for k in setdiff(keys(operators), basket[step+1])
+            delete!(operators, k)
+        end
+        Threads.@threads for (k, v) in collect(operators)
+            operators[k] = kron(rotation' * v * rotation, identityEnv)
         end
 
         # define the qbit operators for the new sites
@@ -170,32 +206,65 @@ function IterDiag(
             operators = CreateDNH(operators, site)
         end
 
-        newSitesOccupancy = [round(Int, col' * sum(operators[("n", [site])] for site in newSites) * col) for col in eachcol(identityEnv)]
-        totalOcc = vcat([occ .+ newSitesOccupancy for occ in totalOcc]...)
+        newSymmetryOperators = []
+        if 'N' in symmetries
+            push!(newSymmetryOperators, sum([operators[("n", [i])] for i in newSites]))
+        end
+        if 'S' in symmetries
+            push!(newSymmetryOperators, sum([(-1)^(1 + i) * operators[("n", [i])] for i in newSites]))
+        end
+
+        if !isempty(symmetries)
+            newSitesQuantumNos = [Tuple(round(Int, col' * operator * col) for operator in newSymmetryOperators)
+                                  for col in eachcol(identityEnv)
+                                 ]
+            quantumNos = vcat([[quantumNo .+ newQuantumNo for newQuantumNo in newSitesQuantumNos]
+                               for quantumNo in quantumNos]...)
+        end
 
         # expand new operators
         bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
-        for site in newSites 
+        @time for site in newSites 
             operators[("+", [site])] = kron(bondAntiSymmzer, operators[("+", [site])])
             operators = CreateDNH(operators, site)
         end
 
-        operators = CreateProductOperator(create[step+1], operators, newSites)
+        @time operators = CreateProductOperator(create[step+1], operators, newSites)
 
         # expand the antisymmetrizer
         bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSites))...)
 
         append!(currentSites, newSites)
+        println("-------")
     end
     return savePaths
 end
 export IterDiag
 
 
-function IterCorrelation(savePaths::Vector{String}, corrDef::Vector{Tuple{String, Vector{Int64}, Float64}};
-        occupancy::Union{Nothing, Function}=nothing)
+function IterCorrelation(savePaths::Vector{String}, 
+        corrDef::Vector{Tuple{String, Vector{Int64}, Float64}};
+        occReq::Union{Nothing, Function}=nothing,
+        magzReq::Union{Nothing, Function}=nothing,
+    )
+
+    quantumNoReq = nothing
+    if !isnothing(occReq) && isnothing(magzReq)
+        quantumNoReq = (q, N) -> occReq(q[1], N)
+    elseif isnothing(occReq) && !isnothing(magzReq)
+        quantumNoReq = (q, N) -> magzReq(q[1], N)
+    elseif !isnothing(occReq) && !isnothing(magzReq)
+        quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
+    end
     corrVals = Float64[]
     metadata = deserialize(savePaths[end])
+    symmetries = metadata["symmetries"]
+    if !isnothing(occReq)
+        @assert 'N' in symmetries
+    end
+    if !isnothing(magzReq)
+        @assert 'S' in symmetries
+    end
 
     operators = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
     for site in metadata["initSites"]
@@ -210,15 +279,15 @@ function IterCorrelation(savePaths::Vector{String}, corrDef::Vector{Tuple{String
         f = deserialize(savePath)
         basis = f["basis"]
         eigVals = f["eigVals"]
-        totOcc = f["occupancy"]
+        quantumNos = f["quantumNos"]
         currentSites = f["currentSites"]
-        if isnothing(occupancy)
+        if isnothing(quantumNoReq)
             gstate = basis[:,argmin(eigVals)]
             push!(energyPerSite, minimum(eigVals)/maximum(currentSites))
         else
-            occupancyIndices = findall(x -> occupancy(x, maximum(currentSites)), totOcc)
-            gstate = basis[:, occupancyIndices][:,argmin(eigVals[occupancyIndices])]
-            push!(energyPerSite, minimum(eigVals[occupancyIndices])/maximum(currentSites))
+            indices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
+            gstate = basis[:, indices][:,argmin(eigVals[indices])]
+            push!(energyPerSite, minimum(eigVals[indices])/maximum(currentSites))
         end
         push!(corrVals, gstate' * corrOperator * gstate)
         if step < length(savePaths) - 1
