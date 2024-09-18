@@ -2,83 +2,65 @@ using fermions, Plots, Measures, BenchmarkTools
 theme(:dark)
 include("../src/iterDiag.jl")
 
-totalSites = 5
+totalSites = 7
 initSites = 1
-kondoJ = 2.
-bathInt = -1.5
-maxSize = 150
-dispersion = [ifelse(i % 2 == 1, -1., 1.) for i in 1:totalSites]
+kondoJ = 1.
+maxSize = 80
+hop_t = 1.
 
-function getHamFlow(initSites::Int64, totalSites::Int64, dispersion::Vector{Float64}, kondoJ::Float64, bathInt::Float64)
+function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64)
     hamFlow = Vector{Tuple{String, Vector{Int64}, Float64}}[]
     initHam = Tuple{String, Vector{Int64}, Float64}[]
-    for site in 1:initSites
-        push!(initHam, ("n",  [1 + 2 * site], dispersion[site])) # c^†_{j,up} c_{j+1,up}
-        push!(initHam, ("n",  [2 + 2 * site], dispersion[site])) # c^†_{j+1,up} c_{j,up}
+    for site in 1:(initSites-1)
+        push!(initHam, ("+-",  [1 + 2 * site, 3 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
+        push!(initHam, ("+-",  [3 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
+        push!(initHam, ("+-",  [2 + 2 * site, 4 + 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
+        push!(initHam, ("+-",  [4 + 2 * site, 2 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
     end
-    for (k1, k2) in Iterators.product(1:initSites, 1:initSites)
-        up1, up2 = 2 .* [k1, k2] .+ 1
-        down1, down2 = 2 .* [k1, k2] .+ 2
-        push!(initHam, ("n+-",  [1, up1, up2], kondoJ/4)) # n_{d up, n_{0 up}
-        push!(initHam, ("n+-",  [1, down1, down2], -kondoJ/4)) # n_{d up, n_{0 down}
-        push!(initHam, ("n+-",  [2, up1, up2], -kondoJ/4)) # n_{d down, n_{0 up}
-        push!(initHam, ("n+-",  [2, down1, down2], kondoJ/4)) # n_{d down, n_{0 down}
-        push!(initHam, ("+-+-",  [1, 2, down1, up2], kondoJ/2)) # S_d^+ S_0^-
-        push!(initHam, ("+-+-",  [2, 1, up1, down2], kondoJ/2)) # S_d^- S_0^+
-    end
-
-    # push!(initHam, ("n",  [3], -bathInt/2)) # -Ub/2 n_{0 up}
-    # push!(initHam, ("n",  [4], -bathInt/2)) # -Ub/2 n_{0 down}
-    # push!(initHam, ("nn",  [3, 4], bathInt)) # Ub n_{0 up} n_{0 down}
+    push!(initHam, ("nn",  [1, 3], kondoJ/4)) # n_{d up, n_{0 up}
+    push!(initHam, ("nn",  [1, 4], -kondoJ/4)) # n_{d up, n_{0 down}
+    push!(initHam, ("nn",  [2, 3], -kondoJ/4)) # n_{d down, n_{0 up}
+    push!(initHam, ("nn",  [2, 4], kondoJ/4)) # n_{d down, n_{0 down}
+    push!(initHam, ("+-+-",  [1, 2, 4, 3], kondoJ/2)) # S_d^+ S_0^-
+    push!(initHam, ("+-+-",  [2, 1, 3, 4], kondoJ/2)) # S_d^- S_0^+
 
     push!(hamFlow, initHam)
 
     for site in initSites+1:totalSites
         newTerm = []
-        push!(newTerm, ("n",  [1 + 2 * site], dispersion[site])) # c^†_{j,up} c_{j+1,up}
-        push!(newTerm, ("n",  [2 + 2 * site], dispersion[site])) # c^†_{j+1,up} c_{j,up}
-
-        for (k1, k2) in Iterators.product(1:site, 1:site)
-            if k1 ≠ site && k2 ≠ site
-                continue
-            end
-            up1, up2 = 2 .* [k1, k2] .+ 1
-            down1, down2 = 2 .* [k1, k2] .+ 2
-            if k2 == site
-                push!(newTerm, ("n+-",  [1, up1, up2], kondoJ/4)) # n_{d up, n_{0 up}
-                push!(newTerm, ("n+-",  [1, down1, down2], -kondoJ/4)) # n_{d up, n_{0 down}
-                push!(newTerm, ("n+-",  [2, up1, up2], -kondoJ/4)) # n_{d down, n_{0 up}
-                push!(newTerm, ("n+-",  [2, down1, down2], kondoJ/4)) # n_{d down, n_{0 down}
-                push!(newTerm, ("+-+-",  [1, 2, down1, up2], kondoJ/2)) # S_d^+ S_0^-
-                push!(newTerm, ("+-+-",  [2, 1, up1, down2], kondoJ/2)) # S_d^- S_0^+
-            else
-                push!(newTerm, ("+-n",  [up1, up2, 1], kondoJ/4)) # n_{d up, n_{0 up}
-                push!(newTerm, ("+-n",  [down1, down2, 1], -kondoJ/4)) # n_{d up, n_{0 down}
-                push!(newTerm, ("+-n",  [up1, up2, 2], -kondoJ/4)) # n_{d down, n_{0 up}
-                push!(newTerm, ("+-n",  [down1, down2, 2], kondoJ/4)) # n_{d down, n_{0 down}
-                push!(newTerm, ("+-+-",  [down1, up2, 1, 2], kondoJ/2)) # S_d^+ S_0^-
-                push!(newTerm, ("+-+-",  [up1, down2, 2, 1], kondoJ/2)) # S_d^- S_0^+
-            end
-        end
+        push!(newTerm, ("+-",  [1 + 2 * site, -1 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
+        push!(newTerm, ("+-",  [-1 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
+        push!(newTerm, ("+-",  [2 + 2 * site, 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
+        push!(newTerm, ("+-",  [2 * site, 2 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
 
         push!(hamFlow, newTerm)
     end
     return hamFlow
 end
 
-hamFlow = getHamFlow(initSites, totalSites, dispersion, kondoJ, bathInt)
+hamFlow = getHamFlow(initSites, totalSites, hop_t, kondoJ)
 p1 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="\$\\langle S_d^+ S_{k_1}^- + \\mathrm{h.c.} \\rangle\$")
 p2 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="energy per site")
 corrdef = [("+-+-", [1, 2, 4, 3], 1.0), ("+-+-", [2, 1, 3, 4], 1.0)]
-savePaths = IterDiag(hamFlow, maxSize;
+savePaths, energypersite = IterDiag(hamFlow, maxSize;
                      symmetries=Char['N', 'S'],
                      # symmetries=Char['S'],
                      # symmetries=Char['N'],
                      magzReq=(m, N) -> -2 ≤ m ≤ 2,
-                     occReq=(x, N) -> div(N, 2) - 5 ≤ x ≤ div(N, 2) + 5,
+                     occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,
                     ) 
+# display(energypersite)
+# savePaths, energypersite = IterDiag(hamFlow, maxSize;
+#                      # symmetries=Char['N', 'S'],
+#                      # symmetries=Char['S'],
+#                      # symmetries=Char['N'],
+#                      # magzReq=(m, N) -> -2 ≤ m ≤ 2,
+#                      # occReq=(x, N) -> div(N, 2) - 5 ≤ x ≤ div(N, 2) + 5,
+#                     ) 
+# display(energypersite)
+# @assert false
 
-corrFlow, energypersite = IterCorrelation(savePaths, corrdef; occReq=(x, N) -> x == div(N, 2))
+corrFlow = IterCorrelation(savePaths, corrdef; occReq=(x, N) -> x == div(N, 2))
 display(energypersite)
 display(corrFlow)
 scatter!(p1, initSites:totalSites, corrFlow, label="\$M_s=$(maxSize)\$")
@@ -90,16 +72,17 @@ energyExact = []
     basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[-1, 0, 1], localCriteria=x->x[1]+x[2]==1)
     fullHam = vcat(hamFlow[1:i]...)
     fullMatrix = OperatorMatrix(basis, fullHam)
-    # display(OperatorMatrix(basis, [("+h", [2, 1], 1.)]))
-    # println("----")
     F = eigen(fullMatrix)
-    totalNum = OperatorMatrix(basis, [("n", [i], 1.) for i in 1:2*(1+num)])
-    display(F.vectors[:, 1]' * totalNum * F.vectors[:, 1])
-    push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, corrdef) * F.vectors[:, 1])
     push!(energyExact, minimum(F.values)/(2*(1 + num)))
+    try
+        totalNum = OperatorMatrix(basis, [("n", [i], 1.) for i in 1:2*(1+num)])
+        push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, corrdef) * F.vectors[:, 1])
+    catch e
+        push!(corrExact, nothing)
+    end
 end
 display(energyExact)
-display(corrExact)
+# display(corrExact)
 # 
 plot!(p1, initSites:totalSites, corrExact, label="exact", linewidth=2)
 plot!(p2, initSites:totalSites, energyExact, label="exact", linewidth=2)
