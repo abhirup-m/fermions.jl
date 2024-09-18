@@ -53,6 +53,171 @@ function CreateDNH(
 end
 
 
+function CombineRequirements(
+        occReq::Union{Nothing,Function},
+        magzReq::Union{Nothing,Function}
+    )
+    quantumNoReq = nothing
+    if !isnothing(occReq) && isnothing(magzReq)
+        quantumNoReq = (q, N) -> occReq(q[1], N)
+    elseif isnothing(occReq) && !isnothing(magzReq)
+        quantumNoReq = (q, N) -> magzReq(q[1], N)
+    elseif !isnothing(occReq) && !isnothing(magzReq)
+        quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
+    end
+    return quantumNoReq
+end
+
+
+function InitiateQuantumNos(
+        currentSites::Vector{Int64}, 
+        symmetries::Vector{Char},
+        initBasis::Vector{Dict{BitVector, Float64}},
+    )
+    symmetryOperators = Vector{Tuple{String,Vector{Int64},Float64}}[]
+    if 'N' in symmetries
+        push!(symmetryOperators, [("n", [i], 1.) for i in currentSites])
+    end
+    if 'S' in symmetries
+        push!(symmetryOperators, [("n", [i], (-1)^(i+1)) for i in currentSites])
+    end
+
+    if !isempty(symmetries)
+        return [Tuple(round(Int, GenCorrelation(state, operator)) for operator in symmetryOperators) 
+                      for state in initBasis]
+    else
+        return nothing
+    end
+end
+
+
+function InitiateMatrices(currentSites, hamltFlow, initBasis)
+    bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
+    create, basket, newSitesFlow = UpdateRequirements(hamltFlow)
+    hamltMatrix = diagm(fill(0.0, 2^length(currentSites)))
+    operators = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
+    for site in currentSites 
+        operators[("+", [site])] = OperatorMatrix(initBasis, [("+", [site], 1.0)])
+        operators = CreateDNH(operators, site)
+    end
+    operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
+    return operators, bondAntiSymmzer, hamltMatrix, newSitesFlow, create, basket
+end
+
+
+function SetupDataWrite(dataDir, hamltFlow, initBasis, currentSites, symmetries)
+    saveId = randstring()
+    mkpath(dataDir)
+    savePaths = [joinpath(dataDir, "$(saveId)-$(j)") for j in 1:length(hamltFlow)]
+    push!(savePaths, joinpath(dataDir, "metadata"))
+    serialize(savePaths[end], Dict("initBasis" => initBasis,
+                                   "initSites" => currentSites,
+                                   "symmetries" => symmetries)
+             )
+    return savePaths
+end
+
+
+function Diagonalise(
+        hamltMatrix::Matrix{Float64},
+        quantumNos::Union{Nothing, Vector{NTuple{1, Int64}}, Vector{NTuple{2, Int64}}},
+    )
+    rotation = zeros(size(hamltMatrix)...)
+    eigVals = zeros(size(hamltMatrix)[2])
+    @time if !isnothing(quantumNos)
+        numCaptured = 0
+        for quantumNo in unique(quantumNos)
+            indices = findall(==(quantumNo), quantumNos)
+            numCaptured += length(indices)
+            F = eigen(Hermitian(hamltMatrix[indices, indices]))
+            rotation[indices, indices] .= F.vectors
+            eigVals[indices] .= F.values
+        end
+        @assert numCaptured == length(quantumNos)
+        sortSequence = sortperm(eigVals)
+        rotation = rotation[:, sortperm(eigVals)]
+        quantumNos = quantumNos[sortperm(eigVals)]
+        eigVals = sort(eigVals)
+    else
+        F = eigen(Hermitian(hamltMatrix))
+        rotation .= F.vectors
+        eigVals .= F.values
+    end
+    return eigVals, rotation, quantumNos
+end
+
+
+function TruncateSpectrum(
+        quantumNoReq,
+        rotation,
+        eigVals,
+        maxSize,
+        degenTol,
+        currentSites,
+        quantumNos, 
+    )
+    if isnothing(quantumNoReq) && length(eigVals) > maxSize
+        # ensure we aren't truncating in the middle of degenerate states
+        rotation = rotation[:, eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
+        if !isnothing(quantumNos)
+            quantumNos = quantumNos[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
+        end
+        eigVals = eigVals[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
+    end
+    if !isnothing(quantumNoReq) && length(eigVals) > maxSize
+        retainBasisVectors = []
+        for sector in unique(quantumNos)[findall(q -> quantumNoReq(q, maximum(currentSites)), unique(quantumNos))]
+            indices = findall(==(sector), quantumNos)
+            if length(indices) > maxSize
+                indices = indices[1:maxSize]
+            end
+            append!(retainBasisVectors, indices)
+        end
+
+        rotation = rotation[:, retainBasisVectors]
+        quantumNos = quantumNos[retainBasisVectors]
+        eigVals = eigVals[retainBasisVectors]
+    end
+    return rotation, eigVals, quantumNos
+end
+
+
+function UpdateQuantumNos(newBasis, symmetries, newSites, quantumNos)
+    newSymmetryOperators = []
+    if 'N' in symmetries
+        push!(newSymmetryOperators, [("n", [i], 1.) for i in eachindex(newSites)])
+    end
+    if 'S' in symmetries
+        push!(newSymmetryOperators, [("n", [i], (-1.)^(i+1)) for i in eachindex(newSites)])
+    end
+
+    if !isempty(symmetries)
+        newSitesQuantumNos = [Tuple(round(Int, GenCorrelation(state, operator)) for operator in newSymmetryOperators) 
+                              for state in newBasis]
+        quantumNos = vcat([[quantumNo .+ newQuantumNo for newQuantumNo in newSitesQuantumNos]
+                           for quantumNo in quantumNos]...)
+    end
+    return quantumNos
+end
+
+
+function UpdateOldOperators(eigVals, identityEnv, newBasket, operators, rotation, bondAntiSymmzer)
+    # expanded diagonal hamiltonian
+    hamltMatrix = kron(diagm(eigVals), identityEnv)
+
+    # rotate and enlarge qubit operators of current system
+    for k in setdiff(keys(operators), newBasket)
+        delete!(operators, k)
+    end
+    @time Threads.@threads for (k, v) in collect(operators)
+        operators[k] = kron(rotation' * v * rotation, identityEnv)
+    end
+
+    bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
+    return hamltMatrix, operators, bondAntiSymmzer
+end
+
+
 """Main function for iterative diagonalisation. Gives the approximate low-energy
 spectrum of a hamiltonian through the following algorithm: first diagonalises a
 Hamiltonian with few degrees of freedom, retains a fixed Ns number of low-energy
@@ -77,97 +242,24 @@ function IterDiag(
         @assert 'S' in symmetries
     end
 
-    quantumNoReq = nothing
-    if !isnothing(occReq) && isnothing(magzReq)
-        quantumNoReq = (q, N) -> occReq(q[1], N)
-    elseif isnothing(occReq) && !isnothing(magzReq)
-        quantumNoReq = (q, N) -> magzReq(q[1], N)
-    elseif !isnothing(occReq) && !isnothing(magzReq)
-        quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
-    end
-    
+    quantumNoReq = CombineRequirements(occReq, magzReq)
+
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
     initBasis = BasisStates(maximum(currentSites))
-    bondAntiSymmzer = length(currentSites) == 1 ? sigmaz : kron(fill(sigmaz, length(currentSites))...)
-    create, basket, newSitesFlow = UpdateRequirements(hamltFlow)
 
-    saveId = randstring()
-    mkpath(dataDir)
-    savePaths = [joinpath(dataDir, "$(saveId)-$(j)") for j in 1:length(hamltFlow)]
-    push!(savePaths, joinpath(dataDir, "metadata"))
-    serialize(savePaths[end], Dict("initBasis" => initBasis, "initSites" => currentSites, "symmetries" => symmetries))
+    savePaths = SetupDataWrite(dataDir, hamltFlow, initBasis, currentSites, symmetries)
 
-    operators = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
-    for site in currentSites 
-        operators[("+", [site])] = OperatorMatrix(initBasis, [("+", [site], 1.0)])
-        operators = CreateDNH(operators, site)
-    end
-
-    hamltMatrix = diagm(fill(0.0, 2^length(currentSites)))
-
-    quantumNos = NTuple{length(symmetries), Int64}[]
-    symmetryOperators = Matrix{Float64}[]
-    if 'N' in symmetries
-        push!(symmetryOperators, sum([operators[("n", [i])] for i in currentSites]))
-    end
-    if 'S' in symmetries
-        push!(symmetryOperators, sum([(-1)^(1 + i) * operators[("n", [i])] for i in currentSites]))
-    end
-
-    operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
+    operators, bondAntiSymmzer, hamltMatrix, newSitesFlow, create, basket = InitiateMatrices(currentSites, hamltFlow, initBasis)
+    quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
 
     energyPerSite = Float64[]
     @showprogress for (step, hamlt) in enumerate(hamltFlow)
-        for (type, members, strength) in hamlt
+        @time for (type, members, strength) in hamlt
             hamltMatrix += strength * operators[(type, members)]
         end
-        rotation = zeros(size(hamltMatrix)...)
-        eigVals = zeros(size(hamltMatrix)[2])
-        if !isempty(quantumNos)
-            for qantumNo in unique(quantumNos)
-                indices = findall(==(qantumNo), quantumNos)
-                F = eigen(Hermitian(hamltMatrix[indices, indices]))
-                rotation[indices, indices] .= F.vectors
-                eigVals[indices] .= F.values
-            end
-            sortSequence = sortperm(eigVals)
-            rotation = rotation[:, sortperm(eigVals)]
-            quantumNos = quantumNos[sortperm(eigVals)]
-            eigVals = sort(eigVals)
-        else
-            F = eigen(Hermitian(hamltMatrix))
-            rotation .= F.vectors
-            eigVals .= F.values
-        end
+        println("Hamiltonian size = ", size(hamltMatrix))
+        eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
         push!(energyPerSite, eigVals[1]/maximum(currentSites))
-
-        if isempty(quantumNos) && !isempty(symmetries)
-            quantumNos = [Tuple(round(Int, col' * operator * col) for operator in symmetryOperators) 
-                          for col in eachcol(rotation)]
-        end
-
-        if isnothing(quantumNoReq) && length(eigVals) > maxSize
-            # ensure we aren't truncating in the middle of degenerate states
-            rotation = rotation[:, eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
-            if !isempty(quantumNos)
-                quantumNos = quantumNos[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
-            end
-            eigVals = eigVals[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
-        end
-        if !isnothing(quantumNoReq) && length(eigVals) > maxSize
-            retainBasisVectors = []
-            for sector in unique(quantumNos)[findall(q -> quantumNoReq(q, maximum(currentSites)), unique(quantumNos))]
-                indices = findall(==(sector), quantumNos)
-                if length(indices) > maxSize
-                    indices = indices[1:maxSize]
-                end
-                append!(retainBasisVectors, indices)
-            end
-
-            rotation = rotation[:, retainBasisVectors]
-            quantumNos = quantumNos[retainBasisVectors]
-            eigVals = eigVals[retainBasisVectors]
-        end
 
         if step == length(hamltFlow)
             serialize(savePaths[step], Dict("basis" => rotation,
@@ -179,6 +271,10 @@ function IterDiag(
                                            )
                      )
             break
+        end
+
+        if length(eigVals) > maxSize
+            rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, maxSize, degenTol, currentSites, quantumNos)
         end
 
         newBasis = BasisStates(length(newSitesFlow[step+1]))
@@ -195,47 +291,18 @@ function IterDiag(
                                        )
                  )
 
-        # expanded diagonal hamiltonian
-        hamltMatrix = kron(diagm(eigVals), identityEnv)
 
-        # rotate and enlarge qubit operators of current system
-        for k in setdiff(keys(operators), basket[step+1])
-            delete!(operators, k)
-        end
-        Threads.@threads for (k, v) in collect(operators)
-            operators[k] = kron(rotation' * v * rotation, identityEnv)
-        end
+        quantumNos = UpdateQuantumNos(newBasis, symmetries, newSitesFlow[step+1], quantumNos)
+
+        @time hamltMatrix, operators, bondAntiSymmzer = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, rotation, bondAntiSymmzer)
 
         # define the qbit operators for the new sites
-        for site in newSitesFlow[step+1] 
-            operators[("+", [site])] = OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)])
+        @time Threads.@threads for site in newSitesFlow[step+1] 
+            operators[("+", [site])] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
             operators = CreateDNH(operators, site)
         end
 
-        newSymmetryOperators = []
-        if 'N' in symmetries
-            push!(newSymmetryOperators, sum([operators[("n", [i])] for i in newSitesFlow[step+1]]))
-        end
-        if 'S' in symmetries
-            push!(newSymmetryOperators, sum([(-1)^(1 + i) * operators[("n", [i])] for i in newSitesFlow[step+1]]))
-        end
-
-        if !isempty(symmetries)
-            newSitesQuantumNos = [Tuple(round(Int, col' * operator * col) for operator in newSymmetryOperators)
-                                  for col in eachcol(identityEnv)
-                                 ]
-            quantumNos = vcat([[quantumNo .+ newQuantumNo for newQuantumNo in newSitesQuantumNos]
-                               for quantumNo in quantumNos]...)
-        end
-
-        # expand new operators
-        bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
-        for site in newSitesFlow[step+1] 
-            operators[("+", [site])] = kron(bondAntiSymmzer, operators[("+", [site])])
-            operators = CreateDNH(operators, site)
-        end
-
-        operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
+        @time operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
 
         # expand the antisymmetrizer
         bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSitesFlow[step+1]))...)
