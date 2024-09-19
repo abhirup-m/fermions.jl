@@ -2,7 +2,7 @@ using fermions, Plots, Measures, BenchmarkTools
 theme(:dark)
 include("../src/iterDiag.jl")
 
-totalSites = 8
+totalSites = 7
 initSites = 1
 kondoJ = 1.
 maxSize = 1000
@@ -41,13 +41,15 @@ end
 hamFlow = getHamFlow(initSites, totalSites, hop_t, kondoJ)
 p1 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="\$\\langle S_d^+ S_{k_1}^- + \\mathrm{h.c.} \\rangle\$")
 p2 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="energy per site")
-corrdef = [("+-+-", [1, 2, 4, 3], 1.0), ("+-+-", [2, 1, 3, 4], 1.0)]
-savePaths, energypersite = IterDiag(hamFlow, maxSize;
+spinFlipCorrd2 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 8, 7], 1.0), ("+-+-", [2, 1, 7, 8], 1.0)]
+spinFlipCorrd0 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 4, 3], 1.0), ("+-+-", [2, 1, 3, 4], 1.0)]
+savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      symmetries=Char['N', 'S'],
                      # symmetries=Char['S'],
                      # symmetries=Char['N'],
                      # magzReq=(m, N) -> -2 ≤ m ≤ 2,
                      # occReq=(x, N) -> div(N, 2) - 4 ≤ x ≤ div(N, 2) + 4,
+                     correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
                     ) 
 # display(energypersite)
 # savePaths, energypersite = IterDiag(hamFlow, maxSize;
@@ -60,8 +62,9 @@ savePaths, energypersite = IterDiag(hamFlow, maxSize;
 # display(energypersite)
 # @assert false
 
-corrFlow = IterCorrelation(savePaths, corrdef)#; occReq=(x, N) -> x == div(N, 2))
-display(energypersite)
+corrFlow = IterCorrelation(savePaths, spinFlipCorrd0)#; occReq=(x, N) -> x == div(N, 2))
+display(corrFlow)
+corrFlow = IterCorrelation(savePaths, spinFlipCorrd2)#; occReq=(x, N) -> x == div(N, 2))
 display(corrFlow)
 scatter!(p1, initSites:totalSites, corrFlow, label="\$M_s=$(maxSize)\$")
 scatter!(p2, initSites:totalSites, energypersite, label="\$M_s=$(maxSize)\$")

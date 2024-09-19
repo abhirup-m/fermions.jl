@@ -100,7 +100,6 @@ function InitiateMatrices(currentSites, hamltFlow, initBasis)
         operators[("+", [site])] = OperatorMatrix(initBasis, [("+", [site], 1.0)])
         operators = CreateDNH(operators, site)
     end
-    operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
     return operators, bondAntiSymmzer, hamltMatrix, newSitesFlow, create, basket
 end
 
@@ -201,20 +200,32 @@ function UpdateQuantumNos(newBasis, symmetries, newSites, quantumNos)
 end
 
 
-function UpdateOldOperators(eigVals, identityEnv, newBasket, operators, rotation, bondAntiSymmzer)
+function UpdateOldOperators(
+        eigVals::Vector{Float64}, 
+        identityEnv::Diagonal{Bool, Vector{Bool}}, 
+        newBasket::Vector{Tuple{String, Vector{Int64}}},
+        operators::Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}},
+        rotation::Matrix{Float64}, 
+        bondAntiSymmzer::Matrix{Float64},
+        corrOperatorDict::Dict{String, Union{Nothing, Matrix{Float64}}},
+    )
+
     # expanded diagonal hamiltonian
     hamltMatrix = kron(diagm(eigVals), identityEnv)
-
     # rotate and enlarge qubit operators of current system
     for k in setdiff(keys(operators), newBasket)
         delete!(operators, k)
     end
-    @time Threads.@threads for (k, v) in collect(operators)
+    @time for (k, v) in operators
         operators[k] = kron(rotation' * v * rotation, identityEnv)
     end
-
     bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
-    return hamltMatrix, operators, bondAntiSymmzer
+    for (name, corrOperator) in corrOperatorDict
+        if !isnothing(corrOperator)
+            corrOperatorDict[name] = kron(rotation' * corrOperator * rotation, identityEnv)
+        end
+    end
+    return hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict
 end
 
 
@@ -232,6 +243,7 @@ function IterDiag(
     symmetries::Vector{Char}=Char[],
     degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
+    correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Tuple{String, Vector{Int64}, Float64}[]}(),
 )
     @assert length(hamltFlow) > 1
     @assert all(∈("NS"), symmetries)
@@ -250,16 +262,41 @@ function IterDiag(
     savePaths = SetupDataWrite(dataDir, hamltFlow, initBasis, currentSites, symmetries)
 
     operators, bondAntiSymmzer, hamltMatrix, newSitesFlow, create, basket = InitiateMatrices(currentSites, hamltFlow, initBasis)
+
+    for (name, correlationDef) in correlationDefDict
+        correlationMaxMember = maximum([maximum(members) for (_, members, _) in correlationDef])
+        corrDefFlow = [ifelse(correlationMaxMember ∈ newSites, correlationDef, eltype(correlationDef)[]) for newSites in newSitesFlow]
+
+        corrCreate, corrBasket = UpdateRequirements(corrDefFlow, newSitesFlow)
+        create = [[c1; c2] for (c1, c2) in zip(create, corrCreate)]
+        basket = [[c1; c2] for (c1, c2) in zip(basket, corrBasket)]
+    end
+    operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
+
     quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
 
-    energyPerSite = Float64[]
+    corrOperatorDict = Dict{String, Union{Nothing, Matrix{Float64}}}(name => nothing for name in keys(correlationDefDict))
+    resultsDict = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(correlationDefDict))
+    @assert "energyPerSite" ∉ keys(resultsDict)
+    resultsDict["energyPerSite"] = Float64[]
+
     @showprogress for (step, hamlt) in enumerate(hamltFlow)
         @time for (type, members, strength) in hamlt
             hamltMatrix += strength * operators[(type, members)]
         end
         println("Hamiltonian size = ", size(hamltMatrix))
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
-        push!(energyPerSite, eigVals[1]/maximum(currentSites))
+        push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
+
+        for (name, correlationDef) in correlationDefDict
+            if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), [(type, members) for (type, members, _) in correlationDef])
+                corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
+            end
+            if !isnothing(corrOperatorDict[name])
+                push!(resultsDict[name], rotation[:, 1]' * corrOperatorDict[name] * rotation[:, 1])
+            end
+        end
+        display(resultsDict)
 
         if step == length(hamltFlow)
             serialize(savePaths[step], Dict("basis" => rotation,
@@ -294,7 +331,7 @@ function IterDiag(
 
         quantumNos = UpdateQuantumNos(newBasis, symmetries, newSitesFlow[step+1], quantumNos)
 
-        @time hamltMatrix, operators, bondAntiSymmzer = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, rotation, bondAntiSymmzer)
+        @time hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, rotation, bondAntiSymmzer, corrOperatorDict)
 
         # define the qbit operators for the new sites
         @time Threads.@threads for site in newSitesFlow[step+1] 
@@ -309,7 +346,7 @@ function IterDiag(
 
         append!(currentSites, newSitesFlow[step+1])
     end
-    return savePaths, energyPerSite
+    return savePaths, resultsDict
 end
 export IterDiag
 
@@ -474,7 +511,6 @@ function UpdateRequirements(
         operator::Vector{Tuple{String,Vector{Int64},Float64}},
         newSitesFlow::Vector{Vector{Int64}},
     )
-    currentSites = Int64[]
     operatorMaxMember = maximum([maximum(members) for (_, members, _) in operator])
     operatorFlow = [ifelse(operatorMaxMember ∈ newSites, operator, Tuple{String,Vector{Int64},Float64}[]) for newSites in newSitesFlow]
 
