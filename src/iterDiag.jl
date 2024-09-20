@@ -1,17 +1,34 @@
 using Serialization, Random, LinearAlgebra, ProgressMeter
 
 
-function TensorProduct(
-        operator::Vector{Tuple{String,Vector{Int64},Float64}},
-        basicMats::Dict{Tuple{Char, Int64}, Matrix{Float64}},
+function OrganiseOperator(
+        operator::String,
+        members::Vector{Int64},
+        newMembers::Vector{Int64},
     )
-    totalMat = zeros(size(basicMats[('+', 1)])...)
-    for (opType, opMembers, opStrength) in operator
-        totalMat += opStrength * prod([basicMats[(o, m)] for (o, m) in zip(opType, opMembers)]) 
+    if all(∈(newMembers), members)
+        return operator, members, 1
     end
-    return totalMat
+    if all(∉(newMembers), members)
+        return operator, members, 1
+    end
+    oldIndices = findall(∉(newMembers), members)
+    if oldIndices[end] == oldIndices[1] + length(oldIndices) - 1
+        return operator, members, 1
+    end
+
+    insertPosition = length(operator)
+    sign = 1
+    for position in length(operator):-1:1
+        if members[position] ∈ newMembers
+            sign *= (-1)^length(filter(∈(('+', '-')), operator[position+1:insertPosition]))
+            operator = operator[1:position-1] * operator[position+1:insertPosition] * operator[position] * operator[insertPosition+1:end]
+            members = vcat(members[1:position-1], members[position+1:insertPosition], members[position], members[insertPosition+1:end])
+            insertPosition -= 1
+        end
+    end
+    return operator, members, sign
 end
-export TensorProduct
 
 
 function CreateProductOperator(
@@ -254,6 +271,21 @@ function IterDiag(
         @assert 'S' in symmetries
     end
 
+    currentSites = Int64[]
+    newSitesFlow = Vector{Int64}[]
+    for (step, hamlt) in enumerate(hamltFlow)
+        newSites = [setdiff(opMembers, currentSites) for (_, opMembers, _) in hamlt] |> V -> vcat(V...) |> unique |> sort
+        push!(newSitesFlow, newSites)
+        append!(currentSites, newSites)
+    end
+
+    for (i, hamlt) in enumerate(hamltFlow)
+        for (j, (operatorString, members, coupling)) in enumerate(hamlt)
+            newString, newMembers, sign = OrganiseOperator(operatorString, members, newSitesFlow[i])
+            hamltFlow[i][j] = (newString, newMembers, coupling * sign)
+        end
+    end
+
     quantumNoReq = CombineRequirements(occReq, magzReq)
 
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
@@ -296,7 +328,6 @@ function IterDiag(
                 push!(resultsDict[name], rotation[:, 1]' * corrOperatorDict[name] * rotation[:, 1])
             end
         end
-        display(resultsDict)
 
         if step == length(hamltFlow)
             serialize(savePaths[step], Dict("basis" => rotation,
@@ -431,29 +462,6 @@ function IterCorrelation(
     return corrVals
 end
 export IterCorrelation
-
-
-function IterSpecFunc(savePaths, probe, probeDag, freqArray, broadening)
-    specfuncFlow = [0 .* freqArray for _ in savePaths]
-
-    for (step, savePath) in enumerate(savePaths)
-        f = deserialize(savePath)
-        basicMats = f["operators"]
-        rotation = f["rotation"]
-        eigVals = f["eigVals"]
-        eigVecs = [collect(vec) for vec in eachcol(rotation)]
-        probeMatrix = TensorProduct(probe, basicMats)
-        probeDagMatrix = TensorProduct(probeDag, basicMats)
-        specfuncFlow[step] .+= SpecFunc(eigVals, rotation, probeMatrix, probeDagMatrix, freqArray, broadening)
-        for j in step+1:length(specfuncFlow)
-            specfuncFlow[j] = copy(specfuncFlow[step])
-        end
-        run(`rm $(savePath)`)
-    end
-    specfuncFlow[end] ./= sum(specfuncFlow[end]) * abs(freqArray[2] - freqArray[1])
-    return specfuncFlow, freqArray
-end
-export IterSpecFunc
 
 
 function UpdateRequirements(

@@ -2,10 +2,10 @@ using fermions, Plots, Measures, BenchmarkTools
 theme(:dark)
 include("../src/iterDiag.jl")
 
-totalSites = 7
+totalSites = 8
 initSites = 1
 kondoJ = 1.
-maxSize = 1000
+maxSize = 2000
 hop_t = 1.
 
 function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64)
@@ -51,43 +51,30 @@ savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      # occReq=(x, N) -> div(N, 2) - 4 ≤ x ≤ div(N, 2) + 4,
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
                     ) 
-# display(energypersite)
-# savePaths, energypersite = IterDiag(hamFlow, maxSize;
-#                      # symmetries=Char['N', 'S'],
-#                      # symmetries=Char['S'],
-#                      # symmetries=Char['N'],
-#                      # magzReq=(m, N) -> -2 ≤ m ≤ 2,
-#                      # occReq=(x, N) -> div(N, 2) - 5 ≤ x ≤ div(N, 2) + 5,
-#                     ) 
-# display(energypersite)
-# @assert false
-
-corrFlow = IterCorrelation(savePaths, spinFlipCorrd0)#; occReq=(x, N) -> x == div(N, 2))
-display(corrFlow)
-corrFlow = IterCorrelation(savePaths, spinFlipCorrd2)#; occReq=(x, N) -> x == div(N, 2))
-display(corrFlow)
-scatter!(p1, initSites:totalSites, corrFlow, label="\$M_s=$(maxSize)\$")
-scatter!(p2, initSites:totalSites, energypersite, label="\$M_s=$(maxSize)\$")
+display(resultsDict["energyPerSite"])
+display(resultsDict["SF2"])
+scatter!(p1, resultsDict["SF2"])
+scatter!(p2, initSites:totalSites, resultsDict["energyPerSite"])
 
 corrExact = []
 energyExact = []
-# @showprogress for (i, num) in enumerate(initSites:totalSites)
-#     basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[-1, 0, 1], localCriteria=x->x[1]+x[2]==1)
-#     fullHam = vcat(hamFlow[1:i]...)
-#     fullMatrix = OperatorMatrix(basis, fullHam)
-#     F = eigen(fullMatrix)
-#     push!(energyExact, minimum(F.values)/(2*(1 + num)))
-#     try
-#         totalNum = OperatorMatrix(basis, [("n", [i], 1.) for i in 1:2*(1+num)])
-#         push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, corrdef) * F.vectors[:, 1])
-#     catch e
-#         push!(corrExact, nothing)
-#     end
-# end
-# display(energyExact)
-# display(corrExact)
-# # 
-# plot!(p1, initSites:totalSites, corrExact, label="exact", linewidth=2)
-# plot!(p2, initSites:totalSites, energyExact, label="exact", linewidth=2)
-# savefig(p1, "spinflipcomparison.pdf")
-# savefig(p2, "energy.pdf")
+@showprogress for (i, num) in enumerate(initSites:totalSites)
+    basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[-1, 0, 1], localCriteria=x->x[1]+x[2]==1)
+    fullHam = vcat(hamFlow[1:i]...)
+    fullMatrix = OperatorMatrix(basis, fullHam)
+    F = eigen(fullMatrix)
+    push!(energyExact, minimum(F.values)/(2*(1 + num)))
+    try
+        totalNum = OperatorMatrix(basis, [("n", [i], 1.) for i in 1:2*(1+num)])
+        push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, spinFlipCorrd2) * F.vectors[:, 1])
+    catch e
+        continue
+    end
+end
+display(energyExact)
+display(corrExact)
+# 
+plot!(p1, corrExact, label="exact", linewidth=2)
+plot!(p2, initSites:totalSites, energyExact, label="exact", linewidth=2)
+savefig(p1, "spinflipcomparison.pdf")
+savefig(p2, "energy.pdf")
