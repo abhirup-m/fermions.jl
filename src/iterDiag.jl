@@ -140,7 +140,7 @@ function Diagonalise(
     )
     rotation = zeros(size(hamltMatrix)...)
     eigVals = zeros(size(hamltMatrix)[2])
-    @time if !isnothing(quantumNos)
+    if !isnothing(quantumNos)
         numCaptured = 0
         for quantumNo in unique(quantumNos)
             indices = findall(==(quantumNo), quantumNos)
@@ -233,11 +233,13 @@ function UpdateOldOperators(
     for k in setdiff(keys(operators), newBasket)
         delete!(operators, k)
     end
-    @time for (k, v) in operators
-        operators[k] = kron(rotation' * v * rotation, identityEnv)
+    keySet = collect(keys(operators))
+    # operators = Dict(keySet .=> fetch.([Threads.@spawn kron(rotation' * operators[key] * rotation, identityEnv) for key in keySet]))
+    Threads.@threads for key in keySet
+        operators[key] = kron(rotation' * operators[key] * rotation, identityEnv)
     end
     bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
-    for (name, corrOperator) in corrOperatorDict
+    Threads.@threads for (name, corrOperator) in collect(corrOperatorDict)
         if !isnothing(corrOperator)
             corrOperatorDict[name] = kron(rotation' * corrOperator * rotation, identityEnv)
         end
@@ -313,14 +315,15 @@ function IterDiag(
     resultsDict["energyPerSite"] = Float64[]
 
     @showprogress for (step, hamlt) in enumerate(hamltFlow)
-        @time for (type, members, strength) in hamlt
+        println()
+        @time "Create Hamiltonian" for (type, members, strength) in hamlt
             hamltMatrix += strength * operators[(type, members)]
         end
         println("Hamiltonian size = ", size(hamltMatrix))
-        eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
+        @time "Diagonalise Hamiltonian" eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
         push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
 
-        for (name, correlationDef) in correlationDefDict
+        for (name, correlationDef) in collect(correlationDefDict)
             if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), [(type, members) for (type, members, _) in correlationDef])
                 corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
             end
@@ -336,12 +339,13 @@ function IterDiag(
                                             "currentSites" => currentSites,
                                             "newSites" => newSitesFlow[step],
                                             "bondAntiSymmzer" => bondAntiSymmzer,
+                                            "results" => resultsDict,
                                            )
                      )
             break
         end
 
-        if length(eigVals) > maxSize
+        @time "Truncate spectrum" if length(eigVals) > maxSize
             rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, maxSize, degenTol, currentSites, quantumNos)
         end
 
@@ -356,21 +360,22 @@ function IterDiag(
                                         "newSites" => newSitesFlow[step],
                                         "bondAntiSymmzer" => bondAntiSymmzer,
                                         "identityEnv" => identityEnv,
+                                        "results" => resultsDict,
                                        )
                  )
 
 
         quantumNos = UpdateQuantumNos(newBasis, symmetries, newSitesFlow[step+1], quantumNos)
 
-        @time hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, rotation, bondAntiSymmzer, corrOperatorDict)
+        @time "Update old operators" hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, rotation, bondAntiSymmzer, corrOperatorDict)
 
         # define the qbit operators for the new sites
-        @time Threads.@threads for site in newSitesFlow[step+1] 
+        @time "Define new operators" for site in newSitesFlow[step+1] 
             operators[("+", [site])] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
             operators = CreateDNH(operators, site)
         end
 
-        @time operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
+        @time "Create new auxiliary operators" operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
 
         # expand the antisymmetrizer
         bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSitesFlow[step+1]))...)
