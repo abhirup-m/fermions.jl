@@ -20,6 +20,7 @@ function OperatorTimeEvol(
     end
     return expecValueTimeEvol, range(0, step=deltaTime, length=numSteps), operatorMatrixTimeEvol
 end
+export OperatorTimeEvol
 
 
 function OTOC(
@@ -38,3 +39,4 @@ function OTOC(
     end
     return otoc
 end
+export OTOC

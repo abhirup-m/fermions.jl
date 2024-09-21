@@ -10,5 +10,6 @@ include("eigenstateRG.jl")
 include("reverseUnitaries.jl")
 include("stateExpansion.jl")
 include("iterDiag.jl")
+include("thermalisation.jl")
 
 end
