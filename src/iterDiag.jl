@@ -4,31 +4,35 @@ using Serialization, Random, LinearAlgebra, ProgressMeter
 function OrganiseOperator(
         operator::String,
         members::Vector{Int64},
-        newMembers::Vector{Int64},
+        #=newMembers::Vector{Int64},=#
     )
-    if all(∈(newMembers), members)
-        return operator, members, 1
-    end
-    if all(∉(newMembers), members)
-        return operator, members, 1
-    end
-    oldIndices = findall(∉(newMembers), members)
-    if oldIndices[end] == oldIndices[1] + length(oldIndices) - 1
+    if issorted(members)
         return operator, members, 1
     end
 
-    insertPosition = length(operator)
     sign = 1
     for position in length(operator):-1:1
-        if members[position] ∈ newMembers
-            sign *= (-1)^length(filter(∈(('+', '-')), operator[position+1:insertPosition]))
-            operator = operator[1:position-1] * operator[position+1:insertPosition] * operator[position] * operator[insertPosition+1:end]
-            members = vcat(members[1:position-1], members[position+1:insertPosition], members[position], members[insertPosition+1:end])
-            insertPosition -= 1
+        if sortperm(members)[position] == position
+            continue
+        else
+            forwardSign = (-1)^length(filter(∈(('+', '-')), operator[sortperm(members)[position]+1:position]))
+            backwardSign = (-1)^length(filter(∈(('+', '-')), operator[sortperm(members)[position]+1:position-1]))
+            sign *= forwardSign * backwardSign
+            
+            bits = split(operator, "")
+            tmp = bits[sortperm(members)[position]]
+            bits[sortperm(members)[position]] = bits[position]
+            bits[position] = tmp
+            operator = join(bits)
+
+            tmp = sort(members)[position]
+            members[sortperm(members)[position]] = members[position]
+            members[position] = tmp
         end
     end
     return operator, members, sign
 end
+export OrganiseOperator
 
 
 function CreateProductOperator(
@@ -198,7 +202,12 @@ function TruncateSpectrum(
 end
 
 
-function UpdateQuantumNos(newBasis, symmetries, newSites, quantumNos)
+function UpdateQuantumNos(
+        newBasis,
+        symmetries::Union{NTuple{1, Char}, NTuple{1, Char}},
+        newSites::Vector{Int64}, 
+        quantumNos::Union{Vector{NTuple{1, Char}}, Vector{NTuple{2, Char}}},
+    )
     newSymmetryOperators = []
     if 'N' in symmetries
         push!(newSymmetryOperators, [("n", [i], 1.) for i in eachindex(newSites)])
@@ -234,7 +243,7 @@ function UpdateOldOperators(
         delete!(operators, k)
     end
     keySet = collect(keys(operators))
-    # operators = Dict(keySet .=> fetch.([Threads.@spawn kron(rotation' * operators[key] * rotation, identityEnv) for key in keySet]))
+
     Threads.@threads for key in keySet
         operators[key] = kron(rotation' * operators[key] * rotation, identityEnv)
     end
@@ -263,6 +272,7 @@ function IterDiag(
     degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Tuple{String, Vector{Int64}, Float64}[]}(),
+    silent::Bool=false,
 )
     @assert length(hamltFlow) > 1
     @assert all(∈("NS"), symmetries)
@@ -283,8 +293,15 @@ function IterDiag(
 
     for (i, hamlt) in enumerate(hamltFlow)
         for (j, (operatorString, members, coupling)) in enumerate(hamlt)
-            newString, newMembers, sign = OrganiseOperator(operatorString, members, newSitesFlow[i])
+            newString, newMembers, sign = OrganiseOperator(operatorString, members)#, newSitesFlow[i])
             hamltFlow[i][j] = (newString, newMembers, coupling * sign)
+        end
+    end
+
+    for (k, v) in correlationDefDict
+        for (j, (operatorString, members, coupling)) in enumerate(v)
+            newString, newMembers, sign = OrganiseOperator(operatorString, members)#, newSitesFlow[i])
+            correlationDefDict[k][j] = (newString, newMembers, coupling * sign)
         end
     end
 
@@ -314,13 +331,15 @@ function IterDiag(
     @assert "energyPerSite" ∉ keys(resultsDict)
     resultsDict["energyPerSite"] = Float64[]
 
-    @showprogress for (step, hamlt) in enumerate(hamltFlow)
-        println()
-        @time "Create Hamiltonian" for (type, members, strength) in hamlt
+    @showprogress enabled=!silent for (step, hamlt) in enumerate(hamltFlow)
+        for (type, members, strength) in hamlt
             hamltMatrix += strength * operators[(type, members)]
         end
-        println("Hamiltonian size = ", size(hamltMatrix))
-        @time "Diagonalise Hamiltonian" eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
+        if !silent
+            println()
+            println("Hamiltonian size = ", size(hamltMatrix))
+        end
+        eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
         push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
 
         for (name, correlationDef) in collect(correlationDefDict)
@@ -345,7 +364,7 @@ function IterDiag(
             break
         end
 
-        @time "Truncate spectrum" if length(eigVals) > maxSize
+        if length(eigVals) > maxSize
             rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, maxSize, degenTol, currentSites, quantumNos)
         end
 
@@ -364,18 +383,19 @@ function IterDiag(
                                        )
                  )
 
+        if !isnothing(quantumNos)
+            quantumNos = UpdateQuantumNos(newBasis, symmetries, newSitesFlow[step+1], quantumNos)
+        end
 
-        quantumNos = UpdateQuantumNos(newBasis, symmetries, newSitesFlow[step+1], quantumNos)
-
-        @time "Update old operators" hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, rotation, bondAntiSymmzer, corrOperatorDict)
+        hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, rotation, bondAntiSymmzer, corrOperatorDict)
 
         # define the qbit operators for the new sites
-        @time "Define new operators" for site in newSitesFlow[step+1] 
+        for site in newSitesFlow[step+1] 
             operators[("+", [site])] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
             operators = CreateDNH(operators, site)
         end
 
-        @time "Create new auxiliary operators" operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
+        operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
 
         # expand the antisymmetrizer
         bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSitesFlow[step+1]))...)
@@ -493,7 +513,10 @@ function UpdateRequirements(
         for (type, members) in create[step]
             oldMembers = findall(∉(newSites), members)
             if !isempty(oldMembers)
-                @assert oldMembers[end] == oldMembers[1] + length(oldMembers) - 1
+                if !(oldMembers[end] == oldMembers[1] + length(oldMembers) - 1)
+                    println((type, members))
+                    @assert false
+                end
                 push!(basket[step], (type[oldMembers], members[oldMembers]))
             end
         end
