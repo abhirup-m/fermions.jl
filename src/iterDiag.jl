@@ -178,12 +178,11 @@ function TruncateSpectrum(
     )
     if isnothing(quantumNoReq)
         # ensure we aren't truncating in the middle of degenerate states
-        rotation = rotation[:, eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
+        rotation = rotation[:, 1:maxSize]
         if !isnothing(quantumNos)
-            quantumNos = quantumNos[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
+            quantumNos = quantumNos[1:maxSize]
         end
-        eigVals = eigVals[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
-        println(eigVals[1:100])
+        eigVals = eigVals[1:maxSize]
     elseif !isnothing(quantumNoReq)
         retainBasisVectors = []
         for sector in unique(quantumNos)[findall(q -> quantumNoReq(q, maximum(currentSites)), unique(quantumNos))]
@@ -197,7 +196,6 @@ function TruncateSpectrum(
         rotation = rotation[:, retainBasisVectors]
         quantumNos = quantumNos[retainBasisVectors]
         eigVals = eigVals[retainBasisVectors]
-        println(2, size(rotation))
     end
     return rotation, eigVals, quantumNos
 end
@@ -275,7 +273,6 @@ function IterDiag(
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Tuple{String, Vector{Int64}, Float64}[]}(),
     silent::Bool=false,
 )
-    println(maxSize)
     @assert length(hamltFlow) > 1
     @assert all(∈("NS"), symmetries)
     if !isnothing(occReq)
@@ -367,7 +364,6 @@ function IterDiag(
         end
 
         if length(eigVals) > maxSize
-            println("T")
             rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, maxSize, degenTol, currentSites, quantumNos)
         end
 
@@ -517,7 +513,6 @@ function UpdateRequirements(
             oldMembers = findall(∉(newSites), members)
             if !isempty(oldMembers)
                 if !(oldMembers[end] == oldMembers[1] + length(oldMembers) - 1)
-                    println((type, members))
                     @assert false
                 end
                 push!(basket[step], (type[oldMembers], members[oldMembers]))
