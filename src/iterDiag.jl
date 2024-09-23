@@ -330,13 +330,10 @@ function IterDiag(
     @assert "energyPerSite" ∉ keys(resultsDict)
     resultsDict["energyPerSite"] = nothing
 
-    @showprogress enabled=!silent for (step, hamlt) in enumerate(hamltFlow)
+    pbar = Progress(length(hamltFlow); enabled=!silent)#, showvalues=[("Size", size(hamltMatrix))])
+    for (step, hamlt) in enumerate(hamltFlow)
         for (type, members, strength) in hamlt
             hamltMatrix += strength * operators[(type, members)]
-        end
-        if !silent
-            println()
-            println("Hamiltonian size = ", size(hamltMatrix))
         end
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
         resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
@@ -400,6 +397,7 @@ function IterDiag(
         bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSitesFlow[step+1]))...)
 
         append!(currentSites, newSitesFlow[step+1])
+        next!(pbar; showvalues=[("Size", size(hamltMatrix))])
     end
     return savePaths, resultsDict
 end
