@@ -1,11 +1,11 @@
-using fermions, Plots, Measures, BenchmarkTools
+using fermions, Plots, Measures
 theme(:dark)
 include("../src/iterDiag.jl")
 
 totalSites = 8
 initSites = 1
 kondoJ = 1.
-maxSize = 2000
+maxSize = 500
 hop_t = 1.
 
 function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64)
@@ -51,19 +51,19 @@ savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      # occReq=(x, N) -> div(N, 2) - 4 ≤ x ≤ div(N, 2) + 4,
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
                     ) 
-display(resultsDict["energyPerSite"])
-display(resultsDict["SF2"])
-scatter!(p1, resultsDict["SF2"])
-scatter!(p2, initSites:totalSites, resultsDict["energyPerSite"])
+# display(deserialize(savePaths[end-1])["eigVals"])
+# display(deserialize(savePaths[end-1])["results"]["SF2"])
+scatter!(p1, [deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
+scatter!(p2, initSites:totalSites, [deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
 
 corrExact = []
 energyExact = []
 @showprogress for (i, num) in enumerate(initSites:totalSites)
-    basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[-1, 0, 1], localCriteria=x->x[1]+x[2]==1)
+    basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[ifelse(isodd(i), 0, 1)], localCriteria=x->x[1]+x[2]==1)
     fullHam = vcat(hamFlow[1:i]...)
     fullMatrix = OperatorMatrix(basis, fullHam)
     F = eigen(fullMatrix)
-    push!(energyExact, minimum(F.values)/(2*(1 + num)))
+    push!(energyExact, minimum(F.values)/(1 + num))
     try
         totalNum = OperatorMatrix(basis, [("n", [i], 1.) for i in 1:2*(1+num)])
         push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, spinFlipCorrd2) * F.vectors[:, 1])

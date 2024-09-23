@@ -176,15 +176,15 @@ function TruncateSpectrum(
         currentSites,
         quantumNos, 
     )
-    if isnothing(quantumNoReq) && length(eigVals) > maxSize
+    if isnothing(quantumNoReq)
         # ensure we aren't truncating in the middle of degenerate states
         rotation = rotation[:, eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
         if !isnothing(quantumNos)
             quantumNos = quantumNos[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
         end
         eigVals = eigVals[eigVals .≤ eigVals[maxSize] + abs(eigVals[maxSize]) * degenTol]
-    end
-    if !isnothing(quantumNoReq) && length(eigVals) > maxSize
+        println(eigVals[1:100])
+    elseif !isnothing(quantumNoReq)
         retainBasisVectors = []
         for sector in unique(quantumNos)[findall(q -> quantumNoReq(q, maximum(currentSites)), unique(quantumNos))]
             indices = findall(==(sector), quantumNos)
@@ -197,16 +197,17 @@ function TruncateSpectrum(
         rotation = rotation[:, retainBasisVectors]
         quantumNos = quantumNos[retainBasisVectors]
         eigVals = eigVals[retainBasisVectors]
+        println(2, size(rotation))
     end
     return rotation, eigVals, quantumNos
 end
 
 
 function UpdateQuantumNos(
-        newBasis,
-        symmetries::Union{NTuple{1, Char}, NTuple{1, Char}},
+        newBasis::Vector{Dict{BitVector, Float64}},
+        symmetries::Vector{Char},
         newSites::Vector{Int64}, 
-        quantumNos::Union{Vector{NTuple{1, Char}}, Vector{NTuple{2, Char}}},
+        quantumNos::Union{Vector{NTuple{1, Int64}}, Vector{NTuple{2, Int64}}},
     )
     newSymmetryOperators = []
     if 'N' in symmetries
@@ -274,6 +275,7 @@ function IterDiag(
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Tuple{String, Vector{Int64}, Float64}[]}(),
     silent::Bool=false,
 )
+    println(maxSize)
     @assert length(hamltFlow) > 1
     @assert all(∈("NS"), symmetries)
     if !isnothing(occReq)
@@ -327,9 +329,9 @@ function IterDiag(
     quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
 
     corrOperatorDict = Dict{String, Union{Nothing, Matrix{Float64}}}(name => nothing for name in keys(correlationDefDict))
-    resultsDict = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(correlationDefDict))
+    resultsDict = Dict{String, Union{Nothing,Float64}}(name => nothing for name in keys(correlationDefDict))
     @assert "energyPerSite" ∉ keys(resultsDict)
-    resultsDict["energyPerSite"] = Float64[]
+    resultsDict["energyPerSite"] = nothing
 
     @showprogress enabled=!silent for (step, hamlt) in enumerate(hamltFlow)
         for (type, members, strength) in hamlt
@@ -340,14 +342,14 @@ function IterDiag(
             println("Hamiltonian size = ", size(hamltMatrix))
         end
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
-        push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
+        resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
 
         for (name, correlationDef) in collect(correlationDefDict)
             if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), [(type, members) for (type, members, _) in correlationDef])
                 corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
             end
             if !isnothing(corrOperatorDict[name])
-                push!(resultsDict[name], rotation[:, 1]' * corrOperatorDict[name] * rotation[:, 1])
+                resultsDict[name] = rotation[:, 1]' * corrOperatorDict[name] * rotation[:, 1]
             end
         end
 
@@ -365,6 +367,7 @@ function IterDiag(
         end
 
         if length(eigVals) > maxSize
+            println("T")
             rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, maxSize, degenTol, currentSites, quantumNos)
         end
 
