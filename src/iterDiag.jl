@@ -267,6 +267,7 @@ function IterDiag(
     maxSize::Int64;
     occReq::Union{Nothing,Function}=nothing,#(o,N)->ifelse(div(N,2)-2 ≤ o ≤ div(N,2)+2, true, false), ## close to half-filling
     magzReq::Union{Nothing,Function}=nothing,#(m,N)->ifelse(m == N, true, false), ## maximally polarised states
+    localCriteria::Union{Nothing,Function}=nothing,#x->x[1] + x[2] == 1, ## impurity occupancy 1
     symmetries::Vector{Char}=Char[],
     degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
@@ -357,6 +358,7 @@ function IterDiag(
                                             "results" => resultsDict,
                                            )
                      )
+            next!(pbar)
             break
         end
 

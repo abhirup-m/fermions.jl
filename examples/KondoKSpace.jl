@@ -27,10 +27,6 @@ function getHamFlow(initSites::Int64, totalSites::Int64, dispersion::Vector{Floa
         push!(initHam, ("+-+-",  [2, 1, up1, down2], kondoJ/2)) # S_d^- S_0^+
     end
 
-    # push!(initHam, ("n",  [3], -bathInt/2)) # -Ub/2 n_{0 up}
-    # push!(initHam, ("n",  [4], -bathInt/2)) # -Ub/2 n_{0 down}
-    # push!(initHam, ("nn",  [3, 4], bathInt)) # Ub n_{0 up} n_{0 down}
-
     push!(hamFlow, initHam)
 
     for site in initSites+1:totalSites
@@ -50,21 +46,6 @@ function getHamFlow(initSites::Int64, totalSites::Int64, dispersion::Vector{Floa
             push!(newTerm, ("n+-",  [2, down1, down2], kondoJ/4)) # n_{d down, n_{0 down}
             push!(newTerm, ("+-+-",  [1, 2, down1, up2], kondoJ/2)) # S_d^+ S_0^-
             push!(newTerm, ("+-+-",  [2, 1, up1, down2], kondoJ/2)) # S_d^- S_0^+
-            # if k2 == site
-            #     push!(newTerm, ("n+-",  [1, up1, up2], kondoJ/4)) # n_{d up, n_{0 up}
-            #     push!(newTerm, ("n+-",  [1, down1, down2], -kondoJ/4)) # n_{d up, n_{0 down}
-            #     push!(newTerm, ("n+-",  [2, up1, up2], -kondoJ/4)) # n_{d down, n_{0 up}
-            #     push!(newTerm, ("n+-",  [2, down1, down2], kondoJ/4)) # n_{d down, n_{0 down}
-            #     push!(newTerm, ("+-+-",  [1, 2, down1, up2], kondoJ/2)) # S_d^+ S_0^-
-            #     push!(newTerm, ("+-+-",  [2, 1, up1, down2], kondoJ/2)) # S_d^- S_0^+
-            # else
-            #     push!(newTerm, ("+-n",  [up1, up2, 1], kondoJ/4)) # n_{d up, n_{0 up}
-            #     push!(newTerm, ("+-n",  [down1, down2, 1], -kondoJ/4)) # n_{d up, n_{0 down}
-            #     push!(newTerm, ("+-n",  [up1, up2, 2], -kondoJ/4)) # n_{d down, n_{0 up}
-            #     push!(newTerm, ("+-n",  [down1, down2, 2], kondoJ/4)) # n_{d down, n_{0 down}
-            #     push!(newTerm, ("+-+-",  [down1, up2, 1, 2], kondoJ/2)) # S_d^+ S_0^-
-            #     push!(newTerm, ("+-+-",  [up1, down2, 2, 1], kondoJ/2)) # S_d^- S_0^+
-            # end
         end
 
         push!(hamFlow, newTerm)
