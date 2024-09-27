@@ -2,11 +2,11 @@ using fermions, Plots, Measures, BenchmarkTools
 theme(:dark)
 include("../src/iterDiag.jl")
 
-totalSites = 6
+totalSites = 7
 initSites = 1
-kondoJ = 2.
+kondoJ = 1.
 bathInt = -1.5
-maxSize = 100
+maxSize = 500
 dispersion = [ifelse(i % 2 == 1, -1., 1.) for i in 1:totalSites]
 
 function getHamFlow(initSites::Int64, totalSites::Int64, dispersion::Vector{Float64}, kondoJ::Float64, bathInt::Float64)
@@ -59,22 +59,23 @@ p2 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="appr
 spinFlipCorrd2 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 8, 7], 1.0), ("+-+-", [2, 1, 7, 8], 1.0)]
 spinFlipCorrd0 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 4, 3], 1.0), ("+-+-", [2, 1, 3, 4], 1.0)]
 savePaths, resultsDict = IterDiag(hamFlow, maxSize;
-                     # symmetries=Char['N', 'S'],
+                     symmetries=Char['N', 'S'],
                      # symmetries=Char['S'],
-                     symmetries=Char['N'],
-                     # magzReq=(m, N) -> -2 ≤ m ≤ 2,
-                     occReq=(x, N) -> div(N, 2) - 4 ≤ x ≤ div(N, 2) + 4,
+                     # symmetries=Char['N'],
+                     #=magzReq=(m, N) -> -1 ≤ m ≤ 1,=#
+                     #=occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,=#
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
                     ) 
+display(vneResults)
 display(resultsDict["energyPerSite"])
 display(resultsDict["SF2"])
-scatter!(p1, resultsDict["SF2"])
-scatter!(p2, initSites:totalSites, resultsDict["energyPerSite"])
+scatter!(p1, [deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
+scatter!(p2, initSites:totalSites, [deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
 
 corrExact = []
 energyExact = []
 @showprogress for (i, num) in enumerate(initSites:totalSites)
-    basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[-1, 0, 1], localCriteria=x->x[1]+x[2]==1)
+    basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[0, 1], localCriteria=x->x[1]+x[2]==1)
     fullHam = vcat(hamFlow[1:i]...)
     fullMatrix = OperatorMatrix(basis, fullHam)
     F = eigen(fullMatrix)

@@ -177,7 +177,6 @@ function TruncateSpectrum(
         quantumNos, 
     )
     if isnothing(quantumNoReq)
-        # ensure we aren't truncating in the middle of degenerate states
         rotation = rotation[:, 1:maxSize]
         if !isnothing(quantumNos)
             quantumNos = quantumNos[1:maxSize]
@@ -488,6 +487,103 @@ end
 export IterCorrelation
 
 
+function IterVNE(
+        savePaths::Vector{String}, 
+        vneSets::Dict{String, Vector{Int64}};
+        occReq::Union{Nothing, Function}=nothing,
+        magzReq::Union{Nothing, Function}=nothing,
+    )
+    requiredOperators = Dict{String, Vector{Tuple{String, Vector{Int64}}}}(name => OperatorsRDM(parties) for (name, parties) in vneSets)
+    newSitesFlow = [deserialize(savePath)["newSites"] for savePath in savePaths[1:end-1]]
+    create, basket, newSitesFlow = UpdateRequirements(vcat(values(requiredOperators)...), newSitesFlow)
+
+    quantumNoReq = nothing
+    if !isnothing(occReq) && isnothing(magzReq)
+        quantumNoReq = (q, N) -> occReq(q[1], N)
+    elseif isnothing(occReq) && !isnothing(magzReq)
+        quantumNoReq = (q, N) -> magzReq(q[1], N)
+    elseif !isnothing(occReq) && !isnothing(magzReq)
+        quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
+    end
+    vneResults = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(vneSets))
+    metadata = deserialize(savePaths[end])
+    symmetries = metadata["symmetries"]
+    if !isnothing(occReq)
+        @assert 'N' in symmetries
+    end
+    if !isnothing(magzReq)
+        @assert 'S' in symmetries
+    end
+
+    operators = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
+    for site in metadata["initSites"]
+        operators[("+", [site])] = OperatorMatrix(metadata["initBasis"], [("+", [site], 1.0)])
+        operators = CreateDNH(operators, site)
+    end
+    operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
+
+    
+    for (step, savePath) in enumerate(savePaths[1:end-1])
+        f = deserialize(savePath)
+        basis = f["basis"]
+        eigVals = f["eigVals"]
+        quantumNos = f["quantumNos"]
+        currentSites = f["currentSites"]
+        densityMatrix = nothing
+        for (name, parties) in collect(vneSets)
+            if !all(∈(keys(operators)), requiredOperators[name])
+                continue
+            end
+            if isnothing(quantumNoReq) && isnothing(densityMatrix)
+                gstate = basis[:,argmin(eigVals)]
+                densityMatrix = gstate * gstate'
+            elseif isnothing(densityMatrix)
+                indices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
+                gstate = basis[:, indices][:,argmin(eigVals[indices])]
+                densityMatrix = gstate * gstate'
+            end
+            reducedDM = sum([operators[operator]' * densityMatrix * operators[operator] for operator in requiredOperators[name]])
+            reducedDM = reducedDM ./ tr(reducedDM)
+            println(name, ": ", tr(reducedDM))
+            eigVals = eigvals(Hermitian(reducedDM))
+            filter!(isposdef, eigVals)
+            push!(vneResults[name], -sum(log.(eigVals) .* eigVals))
+        end
+
+        if step == length(savePaths) - 1
+            break
+        end
+        for (k, v) in collect(operators)
+            operators[k] = kron(basis' * v * basis, f["identityEnv"])
+        end
+
+        newBasis = BasisStates(length(newSitesFlow[step+1]))
+
+        # define the qbit operators for the new sites
+        for site in newSitesFlow[step+1] 
+            operators[("+", [site])] = kron(basis' * f["bondAntiSymmzer"] * basis, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
+            operators = CreateDNH(operators, site)
+        end
+
+        operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
+
+    end
+    return vneResults
+end
+
+
+function OperatorsRDM(
+        parties::Vector{Int64},
+    )
+    @assert !isempty(parties)
+    terms = ["-", "n"]
+    for party in parties[2:end]
+        terms = [terms .* "-"; terms .* "n"]
+    end
+    return [(term, sort(parties)) for term in terms]
+end
+
+
 function UpdateRequirements(
         hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
         newSitesFlow::Vector{Vector{Int64}},
@@ -549,5 +645,14 @@ function UpdateRequirements(
     operatorFlow = [ifelse(operatorMaxMember ∈ newSites, operator, Tuple{String,Vector{Int64},Float64}[]) for newSites in newSitesFlow]
 
     return UpdateRequirements(operatorFlow, newSitesFlow)
+end
+export UpdateRequirements
+
+
+function UpdateRequirements(
+        operator::Vector{Tuple{String,Vector{Int64}}},
+        newSitesFlow::Vector{Vector{Int64}},
+    )
+    return UpdateRequirements([(type, members, 1.) for (type, members) in operator], newSitesFlow)
 end
 export UpdateRequirements

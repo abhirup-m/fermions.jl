@@ -2,10 +2,10 @@ using fermions, Plots, Measures
 theme(:dark)
 include("../src/iterDiag.jl")
 
-totalSites = 8
+totalSites = 7
 initSites = 1
 kondoJ = 1.
-maxSize = 500
+maxSize = 800
 hop_t = 1.
 
 function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64)
@@ -48,31 +48,45 @@ savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      # symmetries=Char['S'],
                      # symmetries=Char['N'],
                      # magzReq=(m, N) -> -2 ≤ m ≤ 2,
-                     # occReq=(x, N) -> div(N, 2) - 4 ≤ x ≤ div(N, 2) + 4,
+                     # occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
                     ) 
-# display(deserialize(savePaths[end-1])["eigVals"])
-# display(deserialize(savePaths[end-1])["results"]["SF2"])
+vneReq = Dict(
+              "SEE_Imp" => [1, 2],
+              "SEE_d2" => [1, 2, 7, 8],
+              "SEE_0" => [3, 4]
+             )
+@time vneResults = IterVNE(savePaths, vneReq)
+display([deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
+display([deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
+display(vneResults)
 scatter!(p1, [deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
 scatter!(p2, initSites:totalSites, [deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
 
 corrExact = []
 energyExact = []
+vneExact = Dict(k => [] for k in keys(vneReq))
 @showprogress for (i, num) in enumerate(initSites:totalSites)
     basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[ifelse(isodd(i), 0, 1)], localCriteria=x->x[1]+x[2]==1)
     fullHam = vcat(hamFlow[1:i]...)
-    fullMatrix = OperatorMatrix(basis, fullHam)
-    F = eigen(fullMatrix)
-    push!(energyExact, minimum(F.values)/(1 + num))
+    eigenVals, eigenStates = Spectrum(fullHam, basis)
+    push!(energyExact, minimum(eigenVals)/(1 + num))
+    for (k, m) in vneReq
+        try
+            push!(vneExact[k], VonNEntropy(eigenStates[1], m))
+        catch e
+            ;
+        end
+    end
     try
-        totalNum = OperatorMatrix(basis, [("n", [i], 1.) for i in 1:2*(1+num)])
-        push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, spinFlipCorrd2) * F.vectors[:, 1])
+        push!(corrExact, GenCorrelation(eigenStates[1], spinFlipCorrd2))
     catch e
         continue
     end
 end
 display(energyExact)
 display(corrExact)
+display(vneExact)
 # 
 plot!(p1, corrExact, label="exact", linewidth=2)
 plot!(p2, initSites:totalSites, energyExact, label="exact", linewidth=2)
