@@ -43,31 +43,34 @@ p1 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="appr
 p2 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="energy per site")
 spinFlipCorrd2 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 8, 7], 1.0), ("+-+-", [2, 1, 7, 8], 1.0)]
 spinFlipCorrd0 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 4, 3], 1.0), ("+-+-", [2, 1, 3, 4], 1.0)]
-savePaths, resultsDict = IterDiag(hamFlow, maxSize;
+vneReq = Dict(
+              "SEE_Imp" => [1, 2],
+              "SEE_d2" => [1, 2, 7, 8],
+              "SEE_0" => [3, 4]
+             )
+@time savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      symmetries=Char['N', 'S'],
                      # symmetries=Char['S'],
                      # symmetries=Char['N'],
                      magzReq=(m, N) -> -1 ≤ m ≤ 3,
                      occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
+                     vneSets=vneReq,
+                     corrMagzReq=(m,N)->m == ifelse(isodd(div(N, 2)), 1, 0),
+                     corrOccReq=(x,N)->x==div(N, 2),
                     ) 
-vneReq = Dict(
-              "SEE_Imp" => [1, 2],
-              "SEE_d2" => [1, 2, 7, 8],
-              "SEE_0" => [3, 4]
-             )
 mutInfoReq = Dict(
                   "MI_d0" => ([1,2],[3,4]),
                   "MI_d1" => ([1,2],[5,6]),
                  )
-@time vneResults = IterVNE(savePaths, vneReq; occReq=(x,N)->x==div(N, 2), magzReq=(m,N)->m == ifelse(isodd(div(N, 2)), 1, 0))
+#=@time IterCorrelation(savePaths, spinFlipCorrd2, Dict(); occReq=(x,N)->x==div(N, 2), magzReq=(m,N)->m == ifelse(isodd(div(N, 2)), 1, 0))=#
+#=@time vneResults = IterVNE(savePaths, vneReq; occReq=(x,N)->x==div(N, 2), magzReq=(m,N)->m == ifelse(isodd(div(N, 2)), 1, 0))=#
 # @time mutInfoResults = IterMutInfo(savePaths, mutInfoReq; occReq=(x,N)->x==div(N, 2), magzReq=(m,N)->m == ifelse(isodd(div(N, 2)), 1, 0))
-display([deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
-display([deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
-display(vneResults)
+# @time display(IterCorrelation(savePaths, spinFlipCorrd2, vneReq; occReq=(x,N)->x==div(N, 2), magzReq=(m,N)->m == ifelse(isodd(div(N, 2)), 1, 0)))
+display(resultsDict)
 # display(mutInfoResults)
-scatter!(p1, [deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
-scatter!(p2, initSites:totalSites, [deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
+# scatter!(p1, [deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
+# scatter!(p2, initSites:totalSites, [deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
 
 corrExact = []
 energyExact = []
@@ -77,7 +80,7 @@ mutInfoExact = Dict(k => [] for k in keys(mutInfoReq))
     basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[ifelse(isodd(i), 0, 1)], localCriteria=x->x[1]+x[2]==1)
     fullHam = vcat(hamFlow[1:i]...)
     eigenVals, eigenStates = Spectrum(fullHam, basis)
-    push!(energyExact, minimum(eigenVals)/(1 + num))
+    push!(energyExact, minimum(eigenVals)/(2*(1 + num)))
     for (k, m) in vneReq
         try
             push!(vneExact[k], VonNEntropy(eigenStates[1], m))

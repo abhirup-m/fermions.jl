@@ -6,7 +6,7 @@ totalSites = 7
 initSites = 1
 kondoJ = 1.
 bathInt = -1.5
-maxSize = 500
+maxSize = 50
 dispersion = [ifelse(i % 2 == 1, -1., 1.) for i in 1:totalSites]
 
 function getHamFlow(initSites::Int64, totalSites::Int64, dispersion::Vector{Float64}, kondoJ::Float64, bathInt::Float64)
@@ -58,13 +58,21 @@ p1 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="appr
 p2 = plot(thickness_scaling=1.6, leftmargin=-6mm, bottommargin=-3mm, label="approx.", xlabel="sites", ylabel="energy per site")
 spinFlipCorrd2 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 8, 7], 1.0), ("+-+-", [2, 1, 7, 8], 1.0)]
 spinFlipCorrd0 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 4, 3], 1.0), ("+-+-", [2, 1, 3, 4], 1.0)]
+
+vneReq = Dict(
+              "SEE_Imp" => [1, 2],
+              "SEE_1" => [5, 6],
+             )
 savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      symmetries=Char['N', 'S'],
                      # symmetries=Char['S'],
                      # symmetries=Char['N'],
-                     #=magzReq=(m, N) -> -1 ≤ m ≤ 1,=#
-                     #=occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,=#
+                     magzReq=(m, N) -> -1 ≤ m ≤ 3,
+                     occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
+                     vneSets=vneReq,
+                     corrMagzReq=(m,N)->m == ifelse(isodd(div(N, 2)), 1, 0),
+                     corrOccReq=(x,N)->x==div(N, 2),
                     ) 
 display(vneResults)
 display(resultsDict["energyPerSite"])
