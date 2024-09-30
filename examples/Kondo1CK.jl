@@ -5,7 +5,7 @@ include("../src/iterDiag.jl")
 totalSites = 7
 initSites = 1
 kondoJ = 1.
-maxSize = 800
+maxSize = 50
 hop_t = 1.
 
 function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64)
@@ -47,8 +47,8 @@ savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      symmetries=Char['N', 'S'],
                      # symmetries=Char['S'],
                      # symmetries=Char['N'],
-                     # magzReq=(m, N) -> -2 ≤ m ≤ 2,
-                     # occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,
+                     magzReq=(m, N) -> -1 ≤ m ≤ 3,
+                     occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
                     ) 
 vneReq = Dict(
@@ -56,16 +56,23 @@ vneReq = Dict(
               "SEE_d2" => [1, 2, 7, 8],
               "SEE_0" => [3, 4]
              )
-@time vneResults = IterVNE(savePaths, vneReq)
+mutInfoReq = Dict(
+                  "MI_d0" => ([1,2],[3,4]),
+                  "MI_d1" => ([1,2],[5,6]),
+                 )
+@time vneResults = IterVNE(savePaths, vneReq; occReq=(x,N)->x==div(N, 2), magzReq=(m,N)->m == ifelse(isodd(div(N, 2)), 1, 0))
+# @time mutInfoResults = IterMutInfo(savePaths, mutInfoReq; occReq=(x,N)->x==div(N, 2), magzReq=(m,N)->m == ifelse(isodd(div(N, 2)), 1, 0))
 display([deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
 display([deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
 display(vneResults)
+# display(mutInfoResults)
 scatter!(p1, [deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
 scatter!(p2, initSites:totalSites, [deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
 
 corrExact = []
 energyExact = []
 vneExact = Dict(k => [] for k in keys(vneReq))
+mutInfoExact = Dict(k => [] for k in keys(mutInfoReq))
 @showprogress for (i, num) in enumerate(initSites:totalSites)
     basis = BasisStates(2 * (1 + num); totOccReq=[1 + num], magzReq=[ifelse(isodd(i), 0, 1)], localCriteria=x->x[1]+x[2]==1)
     fullHam = vcat(hamFlow[1:i]...)
@@ -74,6 +81,13 @@ vneExact = Dict(k => [] for k in keys(vneReq))
     for (k, m) in vneReq
         try
             push!(vneExact[k], VonNEntropy(eigenStates[1], m))
+        catch e
+            ;
+        end
+    end
+    for (k, (m1, m2)) in mutInfoReq
+        try
+            push!(mutInfoExact[k], MutInfo(eigenStates[1], (m1, m2)))
         catch e
             ;
         end
@@ -87,6 +101,7 @@ end
 display(energyExact)
 display(corrExact)
 display(vneExact)
+display(mutInfoExact)
 # 
 plot!(p1, corrExact, label="exact", linewidth=2)
 plot!(p2, initSites:totalSites, energyExact, label="exact", linewidth=2)

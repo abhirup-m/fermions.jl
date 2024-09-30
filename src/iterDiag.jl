@@ -1,4 +1,4 @@
-using Serialization, Random, LinearAlgebra, ProgressMeter
+using Serialization, Random, ProgressMeter, LinearAlgebra 
 
 
 function OrganiseOperator(
@@ -523,52 +523,71 @@ function IterVNE(
     operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
 
     
-    for (step, savePath) in enumerate(savePaths[1:end-1])
+    for (step, savePath) in enumerate(savePaths[1:end-2])
         f = deserialize(savePath)
         basis = f["basis"]
         eigVals = f["eigVals"]
         quantumNos = f["quantumNos"]
         currentSites = f["currentSites"]
-        densityMatrix = nothing
-        for (name, parties) in collect(vneSets)
-            if !all(∈(keys(operators)), requiredOperators[name])
-                continue
-            end
-            if isnothing(quantumNoReq) && isnothing(densityMatrix)
-                gstate = basis[:,argmin(eigVals)]
-                densityMatrix = gstate * gstate'
-            elseif isnothing(densityMatrix)
-                indices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
-                gstate = basis[:, indices][:,argmin(eigVals[indices])]
-                densityMatrix = gstate * gstate'
-            end
-            reducedDM = sum([operators[operator]' * densityMatrix * operators[operator] for operator in requiredOperators[name]])
-            reducedDM = reducedDM ./ tr(reducedDM)
-            println(name, ": ", tr(reducedDM))
-            eigVals = eigvals(Hermitian(reducedDM))
-            filter!(isposdef, eigVals)
-            push!(vneResults[name], -sum(log.(eigVals) .* eigVals))
-        end
 
-        if step == length(savePaths) - 1
-            break
-        end
-        for (k, v) in collect(operators)
+        @time for (k, v) in collect(operators)
             operators[k] = kron(basis' * v * basis, f["identityEnv"])
         end
 
         newBasis = BasisStates(length(newSitesFlow[step+1]))
 
         # define the qbit operators for the new sites
-        for site in newSitesFlow[step+1] 
+        @time for site in newSitesFlow[step+1] 
             operators[("+", [site])] = kron(basis' * f["bondAntiSymmzer"] * basis, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
             operators = CreateDNH(operators, site)
         end
 
-        operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
+        @time operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
 
     end
+
+    @time begin
+    f = deserialize(savePaths[end-1])
+    basis = f["basis"]
+    eigVals = f["eigVals"]
+    quantumNos = f["quantumNos"]
+    currentSites = f["currentSites"]
+
+    indices = 1:size(basis)[2]
+    if !isnothing(quantumNoReq)
+        indices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
+        @assert !isempty(indices) unique(quantumNos)
+    end
+    gstate = basis[:,argmin(eigVals[indices])]
+    densityMatrix = gstate * gstate'
+
+    for (name, parties) in collect(vneSets)
+        reducedDM = sum([operators[operator][indices,:]' * densityMatrix[indices,indices] * operators[operator][indices,:] for operator in requiredOperators[name]])#[indices,indices]
+        reducedDM = reducedDM ./ tr(reducedDM)
+        eigVals = eigvals(Hermitian(reducedDM))
+        filter!(isposdef, eigVals)
+        push!(vneResults[name], -sum(log.(eigVals) .* eigVals))
+    end
+    end
     return vneResults
+end
+
+
+function IterMutInfo(
+        savePaths::Vector{String}, 
+        mutInfoSets::Dict{String, NTuple{2, Vector{Int64}}};
+        occReq::Union{Nothing, Function}=nothing,
+        magzReq::Union{Nothing, Function}=nothing,
+    )
+    mutInfoResults = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(mutInfoSets))
+    for (name, (partyA, partyB)) in mutInfoSets
+        vneSys1 = IterVNE(savePaths, Dict(name => partyA); occReq=occReq, magzReq=magzReq)[name]
+        vneSys2 = IterVNE(savePaths, Dict(name => partyB); occReq=occReq, magzReq=magzReq)[name]
+        vneSys12 = IterVNE(savePaths, Dict(name => vcat(partyA, partyB)); occReq=occReq, magzReq=magzReq)[name]
+        commonPoints = minimum(length.((vneSys1, vneSys2, vneSys12)))
+        mutInfoResults[name] = vneSys1[end-commonPoints+1:end] .+ vneSys2[end-commonPoints+1:end] .- vneSys12[end-commonPoints+1:end]
+    end
+    return mutInfoResults
 end
 
 
