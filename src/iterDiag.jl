@@ -179,13 +179,13 @@ end
 
 
 function TruncateSpectrum(
-        quantumNoReq,
-        rotation,
-        eigVals,
-        maxSize,
-        degenTol,
-        currentSites,
-        quantumNos, 
+        quantumNoReq::Union{Nothing, Function},
+        rotation::Matrix{Float64},
+        eigVals::Vector{Float64},
+        maxSize::Int64,
+        degenTol::Float64,
+        currentSites::Vector{Int64},
+        quantumNos::Union{Nothing, Vector{NTuple{1, Int64}}, Vector{NTuple{2, Int64}}}, 
     )
     if isnothing(quantumNoReq)
         rotation = rotation[:, 1:maxSize]
@@ -194,18 +194,17 @@ function TruncateSpectrum(
         end
         eigVals = eigVals[1:maxSize]
     elseif !isnothing(quantumNoReq)
-        retainBasisVectors = []
-        for sector in unique(quantumNos)[findall(q -> quantumNoReq(q, maximum(currentSites)), unique(quantumNos))]
-            indices = findall(==(sector), quantumNos)
-            if length(indices) > maxSize
-                indices = indices[1:maxSize]
-            end
-            append!(retainBasisVectors, indices)
+        withinSelectedSectors = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
+        outsideSelectedSectors = findall(q -> !quantumNoReq(q, maximum(currentSites)), quantumNos)
+        if sum(withinSelectedSectors) > maxSize
+            retainIndices = withinSelectedSectors[1:maxSize]
+        else
+            retainIndices = [withinSelectedSectors; outsideSelectedSectors[1:(maxSize - length(withinSelectedSectors))]]
         end
 
-        rotation = rotation[:, retainBasisVectors]
-        quantumNos = quantumNos[retainBasisVectors]
-        eigVals = eigVals[retainBasisVectors]
+        rotation = rotation[:, retainIndices]
+        quantumNos = quantumNos[retainIndices]
+        eigVals = eigVals[retainIndices]
     end
     return rotation, eigVals, quantumNos
 end
@@ -288,11 +287,6 @@ function IterDiag(
     corrMagzReq::Union{Nothing,Function}=nothing,#(m,N)->ifelse(m == N, true, false), ## maximally polarised states
 )
 
-    println(vneSets)
-    for hamlt in hamltFlow
-        println(hamlt)
-    end
-    println("-----")
     @assert length(hamltFlow) > 1
     @assert all(∈("NS"), symmetries)
     if !isnothing(occReq)
@@ -418,7 +412,10 @@ function IterDiag(
         end
 
         if length(eigVals) > maxSize
-            rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, maxSize, degenTol, currentSites, quantumNos)
+            rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, 
+                                                             div(maxSize, 2^length(newSitesFlow[step+1])), 
+                                                             degenTol, currentSites, quantumNos
+                                                            )
         end
 
         newBasis = BasisStates(length(newSitesFlow[step+1]))
