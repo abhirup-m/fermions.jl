@@ -1,4 +1,4 @@
-using Serialization, Random, ProgressMeter, LinearAlgebra 
+using Serialization, Random, LinearAlgebra, ProgressMeter
 
 
 function OrganiseOperator(
@@ -76,9 +76,7 @@ end
 
 function CombineRequirements(
         occReq::Union{Nothing,Function},
-        magzReq::Union{Nothing,Function},
-        corrOccReq::Union{Nothing,Function},
-        corrMagzReq::Union{Nothing,Function},
+        magzReq::Union{Nothing,Function}
     )
     quantumNoReq = nothing
     if !isnothing(occReq) && isnothing(magzReq)
@@ -88,16 +86,7 @@ function CombineRequirements(
     elseif !isnothing(occReq) && !isnothing(magzReq)
         quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
     end
-
-    corrQuantumNoReq = nothing
-    if !isnothing(corrOccReq) && isnothing(corrMagzReq)
-        corrQuantumNoReq = (q, N) -> corrOccReq(q[1], N)
-    elseif isnothing(corrOccReq) && !isnothing(corrMagzReq)
-        corrQuantumNoReq = (q, N) -> corrMagzReq(q[1], N)
-    elseif !isnothing(corrOccReq) && !isnothing(corrMagzReq)
-        corrQuantumNoReq = (q, N) -> corrOccReq(q[1], N) && corrMagzReq(q[2], N)
-    end
-    return quantumNoReq, corrQuantumNoReq
+    return quantumNoReq
 end
 
 
@@ -179,32 +168,34 @@ end
 
 
 function TruncateSpectrum(
-        quantumNoReq::Union{Nothing, Function},
-        rotation::Matrix{Float64},
-        eigVals::Vector{Float64},
-        maxSize::Int64,
-        degenTol::Float64,
-        currentSites::Vector{Int64},
-        quantumNos::Union{Nothing, Vector{NTuple{1, Int64}}, Vector{NTuple{2, Int64}}}, 
+        quantumNoReq,
+        rotation,
+        eigVals,
+        maxSize,
+        degenTol,
+        currentSites,
+        quantumNos, 
     )
     if isnothing(quantumNoReq)
+        # ensure we aren't truncating in the middle of degenerate states
         rotation = rotation[:, 1:maxSize]
         if !isnothing(quantumNos)
             quantumNos = quantumNos[1:maxSize]
         end
         eigVals = eigVals[1:maxSize]
     elseif !isnothing(quantumNoReq)
-        withinSelectedSectors = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
-        outsideSelectedSectors = findall(q -> !quantumNoReq(q, maximum(currentSites)), quantumNos)
-        if sum(withinSelectedSectors) > maxSize
-            retainIndices = withinSelectedSectors[1:maxSize]
-        else
-            retainIndices = [withinSelectedSectors; outsideSelectedSectors[1:(maxSize - length(withinSelectedSectors))]]
+        retainBasisVectors = []
+        for sector in unique(quantumNos)[findall(q -> quantumNoReq(q, maximum(currentSites)), unique(quantumNos))]
+            indices = findall(==(sector), quantumNos)
+            if length(indices) > maxSize
+                indices = indices[1:maxSize]
+            end
+            append!(retainBasisVectors, indices)
         end
 
-        rotation = rotation[:, retainIndices]
-        quantumNos = quantumNos[retainIndices]
-        eigVals = eigVals[retainIndices]
+        rotation = rotation[:, retainBasisVectors]
+        quantumNos = quantumNos[retainBasisVectors]
+        eigVals = eigVals[retainBasisVectors]
     end
     return rotation, eigVals, quantumNos
 end
@@ -281,12 +272,8 @@ function IterDiag(
     degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Tuple{String, Vector{Int64}, Float64}[]}(),
-    vneSets::Dict{String, Vector{Int64}}=Dict{String, Vector{Int64}}(),
     silent::Bool=false,
-    corrOccReq::Union{Nothing,Function}=nothing,#(o,N)->ifelse(div(N,2)-2 ≤ o ≤ div(N,2)+2, true, false), ## close to half-filling
-    corrMagzReq::Union{Nothing,Function}=nothing,#(m,N)->ifelse(m == N, true, false), ## maximally polarised states
 )
-
     @assert length(hamltFlow) > 1
     @assert all(∈("NS"), symmetries)
     if !isnothing(occReq)
@@ -318,7 +305,7 @@ function IterDiag(
         end
     end
 
-    quantumNoReq, corrQuantumNoReq = CombineRequirements(occReq, magzReq, corrOccReq, corrMagzReq)
+    quantumNoReq = CombineRequirements(occReq, magzReq)
 
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
     initBasis = BasisStates(maximum(currentSites))
@@ -335,45 +322,29 @@ function IterDiag(
         create = [[c1; c2] for (c1, c2) in zip(create, corrCreate)]
         basket = [[c1; c2] for (c1, c2) in zip(basket, corrBasket)]
     end
-
-    requiredOperators = Dict()
-    for (name, parties) in vneSets
-        requiredOperators[name] = OperatorsRDM(parties)
-        vneCreate, vneBasket, newSitesFlow = UpdateRequirements(requiredOperators[name], newSitesFlow)
-
-        for i in reverse(eachindex(vneCreate))
-            if isempty(vneCreate[i]) && !isempty(vneCreate[i-1])
-                vneBasket[i:end] .= repeat([vneCreate[i-1]], length(vneBasket) - i + 1)
-                break
-            end
-        end
-
-        create = [[c1; c2] for (c1, c2) in zip(create, vneCreate)]
-        basket = [[c1; c2] for (c1, c2) in zip(basket, vneBasket)]
-    end
-
-
     operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
 
     quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
 
     corrOperatorDict = Dict{String, Union{Nothing, Matrix{Float64}}}(name => nothing for name in keys(correlationDefDict))
-    resultsDict = Dict{String, Union{Nothing,Float64}}()
+    resultsDict = Dict{String, Union{Nothing,Float64}}(name => nothing for name in keys(correlationDefDict))
     @assert "energyPerSite" ∉ keys(resultsDict)
     resultsDict["energyPerSite"] = nothing
 
-    pbar = Progress(length(hamltFlow); enabled=!silent)
+    pbar = Progress(length(hamltFlow); enabled=!silent)#, showvalues=[("Size", size(hamltMatrix))])
     for (step, hamlt) in enumerate(hamltFlow)
         for (type, members, strength) in hamlt
             hamltMatrix += strength * operators[(type, members)]
         end
-
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
         resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
 
         for (name, correlationDef) in collect(correlationDefDict)
             if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), [(type, members) for (type, members, _) in correlationDef])
                 corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
+            end
+            if !isnothing(corrOperatorDict[name])
+                resultsDict[name] = rotation[:, 1]' * corrOperatorDict[name] * rotation[:, 1]
             end
         end
 
@@ -384,38 +355,15 @@ function IterDiag(
                                             "currentSites" => currentSites,
                                             "newSites" => newSitesFlow[step],
                                             "bondAntiSymmzer" => bondAntiSymmzer,
+                                            "results" => resultsDict,
                                            )
                      )
             next!(pbar)
-
-            indices = 1:size(rotation)[2]
-            if !isnothing(corrQuantumNoReq)
-                indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
-                @assert !isempty(indices)
-            end
-            gstate = rotation[:,argmin(eigVals[indices])]
-
-            for (name, operator) in corrOperatorDict
-                resultsDict[name] = gstate' * operator * gstate
-            end
-
-            densityMatrix = gstate * gstate'
-            for (name, parties) in collect(vneSets)
-                reducedDM = sum([operators[operator][indices, :]' * densityMatrix[indices,indices] * operators[operator][indices, :] for operator in requiredOperators[name]])
-                reducedDM = reducedDM ./ tr(reducedDM)
-                eigVals = eigvals(Hermitian(reducedDM))
-                filter!(isposdef, eigVals)
-                resultsDict[name] = -sum(log.(eigVals) .* eigVals)
-            end
-
             break
         end
 
         if length(eigVals) > maxSize
-            rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, 
-                                                             div(maxSize, 2^length(newSitesFlow[step+1])), 
-                                                             degenTol, currentSites, quantumNos
-                                                            )
+            rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, maxSize, degenTol, currentSites, quantumNos)
         end
 
         newBasis = BasisStates(length(newSitesFlow[step+1]))
@@ -429,6 +377,7 @@ function IterDiag(
                                         "newSites" => newSitesFlow[step],
                                         "bondAntiSymmzer" => bondAntiSymmzer,
                                         "identityEnv" => identityEnv,
+                                        "results" => resultsDict,
                                        )
                  )
 
@@ -436,9 +385,7 @@ function IterDiag(
             quantumNos = UpdateQuantumNos(newBasis, symmetries, newSitesFlow[step+1], quantumNos)
         end
 
-        hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, 
-                                                                                   rotation, bondAntiSymmzer, corrOperatorDict, 
-                                                                                  )
+        hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, rotation, bondAntiSymmzer, corrOperatorDict)
 
         # define the qbit operators for the new sites
         for site in newSitesFlow[step+1] 
@@ -461,16 +408,13 @@ export IterDiag
 
 function IterCorrelation(
         savePaths::Vector{String}, 
-        corrDef::Vector{Tuple{String, Vector{Int64}, Float64}},
-        vneSets::Dict{String, Vector{Int64}};
+        corrDef::Vector{Tuple{String, Vector{Int64}, Float64}};
         occReq::Union{Nothing, Function}=nothing,
         magzReq::Union{Nothing, Function}=nothing,
     )
 
-
-    requiredOperators = Dict{String, Vector{Tuple{String, Vector{Int64}}}}(name => OperatorsRDM(parties) for (name, parties) in vneSets)
     newSitesFlow = [deserialize(savePath)["newSites"] for savePath in savePaths[1:end-1]]
-    create, basket, newSitesFlow = UpdateRequirements(vcat([(x,y) for (x,y,z) in values(corrDef)], vcat(values(requiredOperators)...)), newSitesFlow)
+    create, basket, newSitesFlow = UpdateRequirements(corrDef, newSitesFlow)
 
     quantumNoReq = nothing
     if !isnothing(occReq) && isnothing(magzReq)
@@ -480,8 +424,7 @@ function IterCorrelation(
     elseif !isnothing(occReq) && !isnothing(magzReq)
         quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
     end
-    corrVals = nothing
-    vneResults = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(vneSets))
+    corrVals = Float64[]
     metadata = deserialize(savePaths[end])
     symmetries = metadata["symmetries"]
     if !isnothing(occReq)
@@ -509,163 +452,40 @@ function IterCorrelation(
         eigVals = f["eigVals"]
         quantumNos = f["quantumNos"]
         currentSites = f["currentSites"]
-        if step == length(savePaths) - 1
-            indices = 1:size(basis)[2]
-            if !isnothing(quantumNoReq)
+        if !isnothing(corrOperator)
+            if isnothing(quantumNoReq)
+                gstate = basis[:,argmin(eigVals)]
+            else
                 indices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
-                @assert !isempty(indices) unique(quantumNos)
+                gstate = basis[:, indices][:,argmin(eigVals[indices])]
             end
-            gstate = basis[:,argmin(eigVals[indices])]
-
-            corrVals = gstate' * corrOperator * gstate
-
-            densityMatrix = gstate * gstate'
-
-            for (name, parties) in collect(vneSets)
-                reducedDM = sum([operators[operator][indices,:]' * densityMatrix[indices,indices] * operators[operator][indices,:] for operator in requiredOperators[name]])#[indices,indices]
-                reducedDM = reducedDM ./ tr(reducedDM)
-                eigVals = eigvals(Hermitian(reducedDM))
-                filter!(isposdef, eigVals)
-                push!(vneResults[name], -sum(log.(eigVals) .* eigVals))
+            push!(corrVals, gstate' * corrOperator * gstate)
+            if step < length(savePaths) - 1
+                corrOperator = kron(basis' * corrOperator * basis, f["identityEnv"])
             end
-            break
+        else
+            for (k, v) in collect(operators)
+                operators[k] = kron(basis' * v * basis, f["identityEnv"])
+            end
+
+            newBasis = BasisStates(length(newSitesFlow[step+1]))
+
+            # define the qbit operators for the new sites
+            for site in newSitesFlow[step+1] 
+                operators[("+", [site])] = kron(basis' * f["bondAntiSymmzer"] * basis, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
+                operators = CreateDNH(operators, site)
+            end
+
+            operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
+            if all(∈(keys(operators)), [(type, members) for (type, members, _) in corrDef])
+                corrOperator = sum([coupling * operators[(type, members)] for (type, members, coupling) in corrDef])
+            end
+
         end
-
-        for (k, v) in collect(operators)
-            operators[k] = kron(basis' * v * basis, f["identityEnv"])
-        end
-
-        newBasis = BasisStates(length(newSitesFlow[step+1]))
-
-        # define the qbit operators for the new sites
-        for site in newSitesFlow[step+1] 
-            operators[("+", [site])] = kron(basis' * f["bondAntiSymmzer"] * basis, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
-            operators = CreateDNH(operators, site)
-        end
-
-        operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
-        if all(∈(keys(operators)), [(type, members) for (type, members, _) in corrDef])
-            corrOperator = sum([coupling * operators[(type, members)] for (type, members, coupling) in corrDef])
-        end
-
     end
-
-    return corrVals, vneResults
-
+    return corrVals
 end
 export IterCorrelation
-
-
-function IterVNE(
-        savePaths::Vector{String}, 
-        vneSets::Dict{String, Vector{Int64}};
-        occReq::Union{Nothing, Function}=nothing,
-        magzReq::Union{Nothing, Function}=nothing,
-    )
-    requiredOperators = Dict{String, Vector{Tuple{String, Vector{Int64}}}}(name => OperatorsRDM(parties) for (name, parties) in vneSets)
-    newSitesFlow = [deserialize(savePath)["newSites"] for savePath in savePaths[1:end-1]]
-    create, basket, newSitesFlow = UpdateRequirements(vcat(values(requiredOperators)...), newSitesFlow)
-
-    quantumNoReq = nothing
-    if !isnothing(occReq) && isnothing(magzReq)
-        quantumNoReq = (q, N) -> occReq(q[1], N)
-    elseif isnothing(occReq) && !isnothing(magzReq)
-        quantumNoReq = (q, N) -> magzReq(q[1], N)
-    elseif !isnothing(occReq) && !isnothing(magzReq)
-        quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
-    end
-    vneResults = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(vneSets))
-    metadata = deserialize(savePaths[end])
-    symmetries = metadata["symmetries"]
-    if !isnothing(occReq)
-        @assert 'N' in symmetries
-    end
-    if !isnothing(magzReq)
-        @assert 'S' in symmetries
-    end
-
-    operators = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
-    for site in metadata["initSites"]
-        operators[("+", [site])] = OperatorMatrix(metadata["initBasis"], [("+", [site], 1.0)])
-        operators = CreateDNH(operators, site)
-    end
-    operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
-
-    
-    for (step, savePath) in enumerate(savePaths[1:end-1])
-        f = deserialize(savePath)
-        basis = f["basis"]
-        eigVals = f["eigVals"]
-        quantumNos = f["quantumNos"]
-        currentSites = f["currentSites"]
-
-        if step == length(savePaths)-1
-            indices = 1:size(basis)[2]
-            if !isnothing(quantumNoReq)
-                indices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
-                @assert !isempty(indices) unique(quantumNos)
-            end
-            gstate = basis[:,argmin(eigVals[indices])]
-            densityMatrix = gstate * gstate'
-
-            for (name, parties) in collect(vneSets)
-                reducedDM = sum([operators[operator][indices,:]' * densityMatrix[indices,indices] * operators[operator][indices,:] for operator in requiredOperators[name]])#[indices,indices]
-                reducedDM = reducedDM ./ tr(reducedDM)
-                eigVals = eigvals(Hermitian(reducedDM))
-                filter!(isposdef, eigVals)
-                push!(vneResults[name], -sum(log.(eigVals) .* eigVals))
-            end
-            break
-        end
-
-        @time for (k, v) in collect(operators)
-            operators[k] = kron(basis' * v * basis, f["identityEnv"])
-        end
-
-        newBasis = BasisStates(length(newSitesFlow[step+1]))
-
-        # define the qbit operators for the new sites
-        @time for site in newSitesFlow[step+1] 
-            operators[("+", [site])] = kron(basis' * f["bondAntiSymmzer"] * basis, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
-            operators = CreateDNH(operators, site)
-        end
-
-        @time operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
-
-    end
-
-    return vneResults
-end
-
-
-function IterMutInfo(
-        savePaths::Vector{String}, 
-        mutInfoSets::Dict{String, NTuple{2, Vector{Int64}}};
-        occReq::Union{Nothing, Function}=nothing,
-        magzReq::Union{Nothing, Function}=nothing,
-    )
-    mutInfoResults = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(mutInfoSets))
-    for (name, (partyA, partyB)) in mutInfoSets
-        vneSys1 = IterVNE(savePaths, Dict(name => partyA); occReq=occReq, magzReq=magzReq)[name]
-        vneSys2 = IterVNE(savePaths, Dict(name => partyB); occReq=occReq, magzReq=magzReq)[name]
-        vneSys12 = IterVNE(savePaths, Dict(name => vcat(partyA, partyB)); occReq=occReq, magzReq=magzReq)[name]
-        commonPoints = minimum(length.((vneSys1, vneSys2, vneSys12)))
-        mutInfoResults[name] = vneSys1[end-commonPoints+1:end] .+ vneSys2[end-commonPoints+1:end] .- vneSys12[end-commonPoints+1:end]
-    end
-    return mutInfoResults
-end
-
-
-function OperatorsRDM(
-        parties::Vector{Int64},
-    )
-    @assert !isempty(parties)
-    terms = ["-", "n"]
-    for party in parties[2:end]
-        terms = [terms .* "-"; terms .* "n"]
-    end
-    return [(term, sort(parties)) for term in terms]
-end
 
 
 function UpdateRequirements(
@@ -729,14 +549,5 @@ function UpdateRequirements(
     operatorFlow = [ifelse(operatorMaxMember ∈ newSites, operator, Tuple{String,Vector{Int64},Float64}[]) for newSites in newSitesFlow]
 
     return UpdateRequirements(operatorFlow, newSitesFlow)
-end
-export UpdateRequirements
-
-
-function UpdateRequirements(
-        operator::Vector{Tuple{String,Vector{Int64}}},
-        newSitesFlow::Vector{Vector{Int64}},
-    )
-    return UpdateRequirements([(type, members, 1.) for (type, members) in operator], newSitesFlow)
 end
 export UpdateRequirements
