@@ -187,29 +187,28 @@ end
 
 
 function TruncateSpectrum(
-        quantumNoReq,
-        rotation,
-        eigVals,
-        maxSize,
-        degenTol,
-        currentSites,
-        quantumNos, 
+        corrQuantumNoReq::Function,
+        rotation::Matrix{Float64},
+        eigVals::Vector{Float64},
+        maxSize::Int64,
+        degenTol::Float64,
+        currentSites::Vector{Int64},
+        quantumNos::Union{Vector{NTuple{1, Int64}},Vector{NTuple{2, Int64}}}, 
     )
-    if isnothing(quantumNoReq)
+    if isnothing(corrQuantumNoReq)
         # ensure we aren't truncating in the middle of degenerate states
         rotation = rotation[:, 1:maxSize]
         if !isnothing(quantumNos)
             quantumNos = quantumNos[1:maxSize]
         end
         eigVals = eigVals[1:maxSize]
-    elseif !isnothing(quantumNoReq)
-        retainBasisVectors = []
-        for sector in unique(quantumNos)[findall(q -> quantumNoReq(q, maximum(currentSites)), unique(quantumNos))]
-            indices = findall(==(sector), quantumNos)
-            if length(indices) > maxSize
-                indices = indices[1:maxSize]
-            end
-            append!(retainBasisVectors, indices)
+    else
+        retainBasisVectors = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
+        otherBasisVectors = findall(q -> !corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
+        if length(retainBasisVectors) < maxSize
+            append!(retainBasisVectors, otherBasisVectors[1:(maxSize - length(retainBasisVectors))])
+        else
+            retainBasisVectors = retainBasisVectors[1:maxSize]
         end
 
         rotation = rotation[:, retainBasisVectors]
@@ -384,12 +383,15 @@ function IterDiag(
                                             "results" => resultsDict,
                                            )
                      )
-            next!(pbar)
+            next!(pbar; showvalues=[("Size", size(hamltMatrix))])
             break
         end
 
-        if length(eigVals) > maxSize
-            rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, maxSize, degenTol, currentSites, quantumNos)
+        if length(eigVals) > div(maxSize, 2^length(newSitesFlow[step+1]))
+            rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, 
+                                                             div(maxSize, 2^length(newSitesFlow[step+1])), 
+                                                             degenTol, currentSites, quantumNos
+                                                            )
         end
 
         newBasis = BasisStates(length(newSitesFlow[step+1]))

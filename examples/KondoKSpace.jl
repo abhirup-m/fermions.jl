@@ -6,7 +6,7 @@ totalSites = 7
 initSites = 1
 kondoJ = 2.
 bathInt = -1.5
-maxSize = 40
+maxSize = 2900
 dispersion = [ifelse(i % 2 == 1, -1., 1.) for i in 1:totalSites]
 
 function getHamFlow(initSites::Int64, totalSites::Int64, dispersion::Vector{Float64}, kondoJ::Float64, bathInt::Float64)
@@ -63,7 +63,7 @@ savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      # symmetries=Char['S'],
                      #=symmetries=Char['N'],=#
                      magzReq=(m, N) -> -1 ≤ m ≤ 2,
-                     occReq=(x, N) -> div(N, 2) - 4 ≤ x ≤ div(N, 2) + 4,
+                     occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,
                      corrMagzReq=(m, N) -> 0 ≤ m ≤ 1,
                      corrOccReq=(x, N) -> x == div(N, 2),
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),

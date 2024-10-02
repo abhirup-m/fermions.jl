@@ -5,7 +5,7 @@ include("../src/iterDiag.jl")
 totalSites = 8
 initSites = 1
 kondoJ = 1.
-maxSize = 50
+maxSize = 3000
 hop_t = 1.
 
 function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64)
@@ -47,9 +47,9 @@ savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      symmetries=Char['N', 'S'],
                      # symmetries=Char['S'],
                      #=symmetries=Char['N'],=#
-                     magzReq=(m, N) -> -1 ≤ m ≤ 2,
+                     magzReq=(m, N) -> -2 ≤ m ≤ 3,
                      occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,
-                     corrMagzReq=(m, N) -> 0 ≤ m ≤ 1,
+                     corrMagzReq=(m, N) -> m == ifelse(isodd(div(N, 2)), 1, 0),
                      corrOccReq=(x, N) -> x == div(N, 2),
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
                     ) 
