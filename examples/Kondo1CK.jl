@@ -5,7 +5,7 @@ include("../src/iterDiag.jl")
 totalSites = 8
 initSites = 1
 kondoJ = 1.
-maxSize = 500
+maxSize = 50
 hop_t = 1.
 
 function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64)
@@ -46,15 +46,14 @@ spinFlipCorrd0 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 4, 3], 1.
 savePaths, resultsDict = IterDiag(hamFlow, maxSize;
                      symmetries=Char['N', 'S'],
                      # symmetries=Char['S'],
-                     # symmetries=Char['N'],
-                     # magzReq=(m, N) -> -2 ≤ m ≤ 2,
-                     # occReq=(x, N) -> div(N, 2) - 4 ≤ x ≤ div(N, 2) + 4,
+                     #=symmetries=Char['N'],=#
+                     magzReq=(m, N) -> -1 ≤ m ≤ 2,
+                     occReq=(x, N) -> div(N, 2) - 3 ≤ x ≤ div(N, 2) + 3,
+                     corrMagzReq=(m, N) -> 0 ≤ m ≤ 1,
+                     corrOccReq=(x, N) -> x == div(N, 2),
                      correlationDefDict=Dict("SF0" => spinFlipCorrd0, "SF2" => spinFlipCorrd2),
                     ) 
-# display(deserialize(savePaths[end-1])["eigVals"])
-# display(deserialize(savePaths[end-1])["results"]["SF2"])
-scatter!(p1, [deserialize(path)["results"]["SF2"] for path in savePaths[1:end-1] if !isnothing(deserialize(path)["results"]["SF2"])])
-scatter!(p2, initSites:totalSites, [deserialize(path)["eigVals"][1] / (initSites + i) for (i, path) in enumerate(savePaths[1:end-1])])
+display(resultsDict)
 
 corrExact = []
 energyExact = []
@@ -63,9 +62,8 @@ energyExact = []
     fullHam = vcat(hamFlow[1:i]...)
     fullMatrix = OperatorMatrix(basis, fullHam)
     F = eigen(fullMatrix)
-    push!(energyExact, minimum(F.values)/(1 + num))
+    push!(energyExact, minimum(F.values)/(2 * (1 + num)))
     try
-        totalNum = OperatorMatrix(basis, [("n", [i], 1.) for i in 1:2*(1+num)])
         push!(corrExact, F.vectors[:, 1]' * OperatorMatrix(basis, spinFlipCorrd2) * F.vectors[:, 1])
     catch e
         continue

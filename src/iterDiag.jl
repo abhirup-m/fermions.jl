@@ -75,18 +75,37 @@ end
 
 
 function CombineRequirements(
-        occReq::Union{Nothing,Function},
-        magzReq::Union{Nothing,Function}
+        occReqSet::NTuple{2, Union{Nothing,Function}},
+        magzReqSet::NTuple{2, Union{Nothing,Function}},
     )
-    quantumNoReq = nothing
-    if !isnothing(occReq) && isnothing(magzReq)
-        quantumNoReq = (q, N) -> occReq(q[1], N)
-    elseif isnothing(occReq) && !isnothing(magzReq)
-        quantumNoReq = (q, N) -> magzReq(q[1], N)
-    elseif !isnothing(occReq) && !isnothing(magzReq)
-        quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
+    quantumNoReqSet = []
+    for i in 1:2
+        requirement = nothing
+        if !isnothing(occReqSet[i]) && isnothing(magzReqSet[i])
+            requirement = (q, N) -> occReqSet[i](q[1], N)
+        elseif isnothing(occReqSet[i]) && !isnothing(magzReqSet[i])
+            requirement = (q, N) -> magzReqSet[i](q[1], N)
+        elseif !isnothing(occReqSet[i]) && !isnothing(magzReqSet[i])
+            requirement = (q, N) -> occReqSet[i](q[1], N) && magzReqSet[i](q[2], N)
+        end
+        push!(quantumNoReqSet, requirement)
     end
-    return quantumNoReq
+    return quantumNoReqSet[1], quantumNoReqSet[2]
+end
+
+
+function CombineRequirements(
+        occReq::Union{Nothing,Function},
+        magzReq::Union{Nothing,Function},
+    )
+    if !isnothing(occReq) && isnothing(magzReq)
+        requirement = (q, N) -> occReq(q[1], N)
+    elseif isnothing(occReq) && !isnothing(magzReq)
+        requirement = (q, N) -> magzReq(q[1], N)
+    elseif !isnothing(occReq) && !isnothing(magzReq)
+        requirement = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
+    end
+    return requirement
 end
 
 
@@ -268,6 +287,8 @@ function IterDiag(
     occReq::Union{Nothing,Function}=nothing,#(o,N)->ifelse(div(N,2)-2 ≤ o ≤ div(N,2)+2, true, false), ## close to half-filling
     magzReq::Union{Nothing,Function}=nothing,#(m,N)->ifelse(m == N, true, false), ## maximally polarised states
     localCriteria::Union{Nothing,Function}=nothing,#x->x[1] + x[2] == 1, ## impurity occupancy 1
+    corrOccReq::Union{Nothing,Function}=nothing,
+    corrMagzReq::Union{Nothing,Function}=nothing,
     symmetries::Vector{Char}=Char[],
     degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
@@ -305,7 +326,7 @@ function IterDiag(
         end
     end
 
-    quantumNoReq = CombineRequirements(occReq, magzReq)
+    quantumNoReq, corrQuantumNoReq = CombineRequirements((occReq, corrOccReq), (magzReq, corrMagzReq))
 
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
     initBasis = BasisStates(maximum(currentSites))
@@ -327,9 +348,9 @@ function IterDiag(
     quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
 
     corrOperatorDict = Dict{String, Union{Nothing, Matrix{Float64}}}(name => nothing for name in keys(correlationDefDict))
-    resultsDict = Dict{String, Union{Nothing,Float64}}(name => nothing for name in keys(correlationDefDict))
+    resultsDict = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(correlationDefDict))
     @assert "energyPerSite" ∉ keys(resultsDict)
-    resultsDict["energyPerSite"] = nothing
+    resultsDict["energyPerSite"] = Float64[]
 
     pbar = Progress(length(hamltFlow); enabled=!silent)#, showvalues=[("Size", size(hamltMatrix))])
     for (step, hamlt) in enumerate(hamltFlow)
@@ -337,14 +358,19 @@ function IterDiag(
             hamltMatrix += strength * operators[(type, members)]
         end
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
-        resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
+        push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
 
         for (name, correlationDef) in collect(correlationDefDict)
             if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), [(type, members) for (type, members, _) in correlationDef])
                 corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
             end
             if !isnothing(corrOperatorDict[name])
-                resultsDict[name] = rotation[:, 1]' * corrOperatorDict[name] * rotation[:, 1]
+                indices = 1:length(eigVals)
+                if !isnothing(corrQuantumNoReq)
+                    indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
+                end
+                gstate = rotation[:, indices[1]]
+                push!(resultsDict[name], gstate' * corrOperatorDict[name] * gstate)
             end
         end
 
@@ -404,88 +430,6 @@ function IterDiag(
     return savePaths, resultsDict
 end
 export IterDiag
-
-
-function IterCorrelation(
-        savePaths::Vector{String}, 
-        corrDef::Vector{Tuple{String, Vector{Int64}, Float64}};
-        occReq::Union{Nothing, Function}=nothing,
-        magzReq::Union{Nothing, Function}=nothing,
-    )
-
-    newSitesFlow = [deserialize(savePath)["newSites"] for savePath in savePaths[1:end-1]]
-    create, basket, newSitesFlow = UpdateRequirements(corrDef, newSitesFlow)
-
-    quantumNoReq = nothing
-    if !isnothing(occReq) && isnothing(magzReq)
-        quantumNoReq = (q, N) -> occReq(q[1], N)
-    elseif isnothing(occReq) && !isnothing(magzReq)
-        quantumNoReq = (q, N) -> magzReq(q[1], N)
-    elseif !isnothing(occReq) && !isnothing(magzReq)
-        quantumNoReq = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
-    end
-    corrVals = Float64[]
-    metadata = deserialize(savePaths[end])
-    symmetries = metadata["symmetries"]
-    if !isnothing(occReq)
-        @assert 'N' in symmetries
-    end
-    if !isnothing(magzReq)
-        @assert 'S' in symmetries
-    end
-
-    operators = Dict{Tuple{String, Vector{Int64}}, Matrix{Float64}}()
-    for site in metadata["initSites"]
-        operators[("+", [site])] = OperatorMatrix(metadata["initBasis"], [("+", [site], 1.0)])
-        operators = CreateDNH(operators, site)
-    end
-    operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
-
-    corrOperator = nothing
-    if all(∈(keys(operators)), [(type, members) for (type, members, _) in corrDef])
-        corrOperator = sum([coupling * operators[(type, members)] for (type, members, coupling) in corrDef])
-    end
-    
-    for (step, savePath) in enumerate(savePaths[1:end-1])
-        f = deserialize(savePath)
-        basis = f["basis"]
-        eigVals = f["eigVals"]
-        quantumNos = f["quantumNos"]
-        currentSites = f["currentSites"]
-        if !isnothing(corrOperator)
-            if isnothing(quantumNoReq)
-                gstate = basis[:,argmin(eigVals)]
-            else
-                indices = findall(q -> quantumNoReq(q, maximum(currentSites)), quantumNos)
-                gstate = basis[:, indices][:,argmin(eigVals[indices])]
-            end
-            push!(corrVals, gstate' * corrOperator * gstate)
-            if step < length(savePaths) - 1
-                corrOperator = kron(basis' * corrOperator * basis, f["identityEnv"])
-            end
-        else
-            for (k, v) in collect(operators)
-                operators[k] = kron(basis' * v * basis, f["identityEnv"])
-            end
-
-            newBasis = BasisStates(length(newSitesFlow[step+1]))
-
-            # define the qbit operators for the new sites
-            for site in newSitesFlow[step+1] 
-                operators[("+", [site])] = kron(basis' * f["bondAntiSymmzer"] * basis, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
-                operators = CreateDNH(operators, site)
-            end
-
-            operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
-            if all(∈(keys(operators)), [(type, members) for (type, members, _) in corrDef])
-                corrOperator = sum([coupling * operators[(type, members)] for (type, members, coupling) in corrDef])
-            end
-
-        end
-    end
-    return corrVals
-end
-export IterCorrelation
 
 
 function UpdateRequirements(
