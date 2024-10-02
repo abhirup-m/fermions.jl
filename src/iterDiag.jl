@@ -251,13 +251,17 @@ function UpdateOldOperators(
         rotation::Matrix{Float64}, 
         bondAntiSymmzer::Matrix{Float64},
         corrOperatorDict::Dict{String, Union{Nothing, Matrix{Float64}}},
+        vneOperators::Vector{Tuple{String, Vector{Int64}}},
     )
 
     # expanded diagonal hamiltonian
     hamltMatrix = kron(diagm(eigVals), identityEnv)
+
     # rotate and enlarge qubit operators of current system
     for k in setdiff(keys(operators), newBasket)
-        delete!(operators, k)
+        if k ∉ vneOperators
+            delete!(operators, k)
+        end
     end
     keySet = collect(keys(operators))
 
@@ -292,8 +296,11 @@ function IterDiag(
     degenTol::Float64=1e-10,
     dataDir::String="data-iterdiag",
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Tuple{String, Vector{Int64}, Float64}[]}(),
+    vneDefDict::Dict{String, Vector{Int64}}=Dict{String, Vector{Int64}}(),
+    mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
     silent::Bool=false,
 )
+    
     @assert length(hamltFlow) > 1
     @assert all(∈("NS"), symmetries)
     if !isnothing(occReq)
@@ -301,6 +308,29 @@ function IterDiag(
     end
     if !isnothing(magzReq)
         @assert 'S' in symmetries
+    end
+
+    mutInfoDirective = Dict{String, Vector{String}}(name => String[] for name in keys(mutInfoDefDict))
+    for (name, (sysA, sysB)) in mutInfoDefDict
+        for subsystem in [sysA, sysB, vcat(sysA, sysB)]
+            if subsystem ∉ values(vneDefDict)
+                subsystemVneName = randstring(5)
+                vneDefDict[subsystemVneName] = sysA
+                push!(mutInfoDirective[name], subsystemVneName)
+            else 
+                subsystemVneName = [k for (k,v) in vneDefDict if v == subsystem][1]
+                push!(mutInfoDirective[name], subsystemVneName)
+            end
+        end
+    end
+
+
+    vneOperatorDict = Dict{Tuple{String,Vector{Int64}}, Union{Nothing,Matrix{Float64}}}()
+    for (name, sites) in vneDefDict
+        for sequence in Iterators.product(repeat(["+-nh"], length(sites))...)
+            operator = (join(sequence), sites)
+            vneOperatorDict[operator] = nothing
+        end
     end
 
     currentSites = Int64[]
@@ -342,6 +372,14 @@ function IterDiag(
         create = [[c1; c2] for (c1, c2) in zip(create, corrCreate)]
         basket = [[c1; c2] for (c1, c2) in zip(basket, corrBasket)]
     end
+
+
+    for name in keys(vneOperatorDict)
+        vneCreate, vneBasket = UpdateRequirements([(name..., 1.)], newSitesFlow)
+        create = [[c1; c2] for (c1, c2) in zip(create, vneCreate)]
+        basket = [[c1; c2] for (c1, c2) in zip(basket, vneBasket)]
+    end
+
     operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
 
     quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
@@ -351,7 +389,7 @@ function IterDiag(
     @assert "energyPerSite" ∉ keys(resultsDict)
     resultsDict["energyPerSite"] = Float64[]
 
-    pbar = Progress(length(hamltFlow); enabled=!silent)#, showvalues=[("Size", size(hamltMatrix))])
+    pbar = Progress(length(hamltFlow); enabled=!silent)
     for (step, hamlt) in enumerate(hamltFlow)
         for (type, members, strength) in hamlt
             hamltMatrix += strength * operators[(type, members)]
@@ -383,6 +421,43 @@ function IterDiag(
                                             "results" => resultsDict,
                                            )
                      )
+
+            chooser(i, j) = ifelse(i == j == 1, "n", 
+                                  ifelse(i == j == 0, "h", 
+                                         ifelse(i == 1, "+", 
+                                                ifelse(i == 0, "-", nothing)
+                                               )
+                                        )
+                                 )
+
+            for (name, operator) in vneOperatorDict
+                if isnothing(operator) && name ∈ keys(operators)
+                    vneOperatorDict[name] = operators[name]
+                end
+            end
+
+            for (name, sites) in vneDefDict
+                reducedDM = zeros(2^length(sites), 2^length(sites))
+                basisVectors = collect(Iterators.product(repeat([[1, 0]], length(sites))...))
+                for (i, sequence_i) in collect(enumerate(basisVectors))
+                    for j in eachindex(basisVectors)[i:end]
+                        sequence_j = basisVectors[j]
+                        operatorChars = prod([chooser(s_i, s_j) for (s_i, s_j) in zip(sequence_i, sequence_j)])
+                        operator = vneOperatorDict[(operatorChars, sites)]
+                        reducedDM[i, j] = rotation[:, 1]' * operator * rotation[:, 1]
+                        reducedDM[j, i] = reducedDM[i, j]'
+                    end
+                end
+                reducedDM /= tr(reducedDM)
+                rdmEigVals = filter(>(0), eigvals(Hermitian(reducedDM)))
+                resultsDict[name] = [-sum(rdmEigVals .* log.(rdmEigVals))]
+            end
+
+            for name in keys(mutInfoDefDict)
+                vneNames = mutInfoDirective[name]
+                resultsDict[name] = resultsDict[vneNames[1]] + resultsDict[vneNames[2]] - resultsDict[vneNames[3]]
+            end
+
             next!(pbar; showvalues=[("Size", size(hamltMatrix))])
             break
         end
@@ -397,6 +472,15 @@ function IterDiag(
         newBasis = BasisStates(length(newSitesFlow[step+1]))
 
         identityEnv = length(newSitesFlow[step+1]) == 1 ? I(2) : kron(fill(I(2), length(newSitesFlow[step+1]))...)
+
+        for (name, operator) in vneOperatorDict
+            if isnothing(operator) && name ∈ keys(operators)
+                vneOperatorDict[name] = operators[name]
+            end
+            if !isnothing(vneOperatorDict[name])
+                vneOperatorDict[name] = kron(rotation' * vneOperatorDict[name] * rotation, identityEnv)
+            end
+        end
 
         serialize(savePaths[step], Dict("basis" => rotation,
                                         "eigVals" => eigVals,
@@ -413,7 +497,10 @@ function IterDiag(
             quantumNos = UpdateQuantumNos(newBasis, symmetries, newSitesFlow[step+1], quantumNos)
         end
 
-        hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], operators, rotation, bondAntiSymmzer, corrOperatorDict)
+        hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
+                                                                                   operators, rotation, bondAntiSymmzer, 
+                                                                                   corrOperatorDict, Tuple{String, Vector{Int64}}[],
+                                                                                  )
 
         # define the qbit operators for the new sites
         for site in newSitesFlow[step+1] 
