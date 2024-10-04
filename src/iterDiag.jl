@@ -4,7 +4,6 @@ using Serialization, Random, LinearAlgebra, ProgressMeter
 function OrganiseOperator(
         operator::String,
         members::Vector{Int64},
-        #=newMembers::Vector{Int64},=#
     )
     if issorted(members)
         return operator, members, 1
@@ -187,13 +186,13 @@ end
 
 
 function TruncateSpectrum(
-        corrQuantumNoReq::Function,
+        corrQuantumNoReq::Union{Nothing,Function},
         rotation::Matrix{Float64},
         eigVals::Vector{Float64},
         maxSize::Int64,
         degenTol::Float64,
         currentSites::Vector{Int64},
-        quantumNos::Union{Vector{NTuple{1, Int64}},Vector{NTuple{2, Int64}}}, 
+        quantumNos::Union{Nothing,Vector{NTuple{1, Int64}},Vector{NTuple{2, Int64}}}, 
     )
     if isnothing(corrQuantumNoReq)
         # ensure we aren't truncating in the middle of degenerate states
@@ -286,52 +285,15 @@ the basis of these Ns states, then diagonalises it, etc.
 """
 function IterDiag(
     hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
-    maxSize::Int64;
-    occReq::Union{Nothing,Function}=nothing,#(o,N)->ifelse(div(N,2)-2 ≤ o ≤ div(N,2)+2, true, false), ## close to half-filling
-    magzReq::Union{Nothing,Function}=nothing,#(m,N)->ifelse(m == N, true, false), ## maximally polarised states
-    localCriteria::Union{Nothing,Function}=nothing,#x->x[1] + x[2] == 1, ## impurity occupancy 1
-    corrOccReq::Union{Nothing,Function}=nothing,
-    corrMagzReq::Union{Nothing,Function}=nothing,
-    symmetries::Vector{Char}=Char[],
-    degenTol::Float64=1e-10,
-    dataDir::String="data-iterdiag",
-    correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Tuple{String, Vector{Int64}, Float64}[]}(),
-    vneDefDict::Dict{String, Vector{Int64}}=Dict{String, Vector{Int64}}(),
-    mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
-    silent::Bool=false,
+    maxSize::Int64,
+    symmetries::Vector{Char},
+    correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}},
+    quantumNoReq::Union{Nothing,Function},
+    corrQuantumNoReq::Union{Nothing,Function},
+    degenTol::Float64,
+    dataDir::String,
+    silent::Bool,
 )
-    
-    @assert length(hamltFlow) > 1
-    @assert all(∈("NS"), symmetries)
-    if !isnothing(occReq)
-        @assert 'N' in symmetries
-    end
-    if !isnothing(magzReq)
-        @assert 'S' in symmetries
-    end
-
-    mutInfoDirective = Dict{String, Vector{String}}(name => String[] for name in keys(mutInfoDefDict))
-    for (name, (sysA, sysB)) in mutInfoDefDict
-        for subsystem in [sysA, sysB, vcat(sysA, sysB)]
-            if subsystem ∉ values(vneDefDict)
-                subsystemVneName = randstring(5)
-                vneDefDict[subsystemVneName] = sysA
-                push!(mutInfoDirective[name], subsystemVneName)
-            else 
-                subsystemVneName = [k for (k,v) in vneDefDict if v == subsystem][1]
-                push!(mutInfoDirective[name], subsystemVneName)
-            end
-        end
-    end
-
-
-    vneOperatorDict = Dict{Tuple{String,Vector{Int64}}, Union{Nothing,Matrix{Float64}}}()
-    for (name, sites) in vneDefDict
-        for sequence in Iterators.product(repeat(["+-nh"], length(sites))...)
-            operator = (join(sequence), sites)
-            vneOperatorDict[operator] = nothing
-        end
-    end
 
     currentSites = Int64[]
     newSitesFlow = Vector{Int64}[]
@@ -347,15 +309,6 @@ function IterDiag(
             hamltFlow[i][j] = (newString, newMembers, coupling * sign)
         end
     end
-
-    for (k, v) in correlationDefDict
-        for (j, (operatorString, members, coupling)) in enumerate(v)
-            newString, newMembers, sign = OrganiseOperator(operatorString, members)#, newSitesFlow[i])
-            correlationDefDict[k][j] = (newString, newMembers, coupling * sign)
-        end
-    end
-
-    quantumNoReq, corrQuantumNoReq = CombineRequirements((occReq, corrOccReq), (magzReq, corrMagzReq))
 
     currentSites = collect(1:maximum(maximum.([opMembers for (_, opMembers, _) in hamltFlow[1]])))
     initBasis = BasisStates(maximum(currentSites))
@@ -373,21 +326,14 @@ function IterDiag(
         basket = [[c1; c2] for (c1, c2) in zip(basket, corrBasket)]
     end
 
-
-    for name in keys(vneOperatorDict)
-        vneCreate, vneBasket = UpdateRequirements([(name..., 1.)], newSitesFlow)
-        create = [[c1; c2] for (c1, c2) in zip(create, vneCreate)]
-        basket = [[c1; c2] for (c1, c2) in zip(basket, vneBasket)]
-    end
-
     operators = CreateProductOperator(create[1], operators, newSitesFlow[1])
 
     quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
 
     corrOperatorDict = Dict{String, Union{Nothing, Matrix{Float64}}}(name => nothing for name in keys(correlationDefDict))
-    resultsDict = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(correlationDefDict))
+    resultsDict = Dict{String, Union{Nothing, Float64}}(name => nothing for name in keys(correlationDefDict))
     @assert "energyPerSite" ∉ keys(resultsDict)
-    resultsDict["energyPerSite"] = Float64[]
+    resultsDict["energyPerSite"] = nothing
 
     pbar = Progress(length(hamltFlow); enabled=!silent)
     for (step, hamlt) in enumerate(hamltFlow)
@@ -395,19 +341,10 @@ function IterDiag(
             hamltMatrix += strength * operators[(type, members)]
         end
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
-        push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
 
         for (name, correlationDef) in collect(correlationDefDict)
             if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), [(type, members) for (type, members, _) in correlationDef])
                 corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
-            end
-            if !isnothing(corrOperatorDict[name])
-                indices = 1:length(eigVals)
-                if !isnothing(corrQuantumNoReq)
-                    indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
-                end
-                gstate = rotation[:, indices[1]]
-                push!(resultsDict[name], gstate' * corrOperatorDict[name] * gstate)
             end
         end
 
@@ -422,41 +359,19 @@ function IterDiag(
                                            )
                      )
 
-            chooser(i, j) = ifelse(i == j == 1, "n", 
-                                  ifelse(i == j == 0, "h", 
-                                         ifelse(i == 1, "+", 
-                                                ifelse(i == 0, "-", nothing)
-                                               )
-                                        )
-                                 )
+            resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
 
-            for (name, operator) in vneOperatorDict
-                if isnothing(operator) && name ∈ keys(operators)
-                    vneOperatorDict[name] = operators[name]
+            indices = 1:length(eigVals)
+            if !isnothing(corrQuantumNoReq)
+                indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
+            end
+            finalState = rotation[:, indices[1]]
+            for (name, correlationDef) in correlationDefDict
+                if !isnothing(corrOperatorDict[name])
+                    resultsDict[name] = finalState' * corrOperatorDict[name] * finalState
                 end
             end
 
-            for (name, sites) in vneDefDict
-                reducedDM = zeros(2^length(sites), 2^length(sites))
-                basisVectors = collect(Iterators.product(repeat([[1, 0]], length(sites))...))
-                for (i, sequence_i) in collect(enumerate(basisVectors))
-                    for j in eachindex(basisVectors)[i:end]
-                        sequence_j = basisVectors[j]
-                        operatorChars = prod([chooser(s_i, s_j) for (s_i, s_j) in zip(sequence_i, sequence_j)])
-                        operator = vneOperatorDict[(operatorChars, sites)]
-                        reducedDM[i, j] = rotation[:, 1]' * operator * rotation[:, 1]
-                        reducedDM[j, i] = reducedDM[i, j]'
-                    end
-                end
-                reducedDM /= tr(reducedDM)
-                rdmEigVals = filter(>(0), eigvals(Hermitian(reducedDM)))
-                resultsDict[name] = [-sum(rdmEigVals .* log.(rdmEigVals))]
-            end
-
-            for name in keys(mutInfoDefDict)
-                vneNames = mutInfoDirective[name]
-                resultsDict[name] = resultsDict[vneNames[1]] + resultsDict[vneNames[2]] - resultsDict[vneNames[3]]
-            end
 
             next!(pbar; showvalues=[("Size", size(hamltMatrix))])
             break
@@ -472,15 +387,6 @@ function IterDiag(
         newBasis = BasisStates(length(newSitesFlow[step+1]))
 
         identityEnv = length(newSitesFlow[step+1]) == 1 ? I(2) : kron(fill(I(2), length(newSitesFlow[step+1]))...)
-
-        for (name, operator) in vneOperatorDict
-            if isnothing(operator) && name ∈ keys(operators)
-                vneOperatorDict[name] = operators[name]
-            end
-            if !isnothing(vneOperatorDict[name])
-                vneOperatorDict[name] = kron(rotation' * vneOperatorDict[name] * rotation, identityEnv)
-            end
-        end
 
         serialize(savePaths[step], Dict("basis" => rotation,
                                         "eigVals" => eigVals,
@@ -515,6 +421,128 @@ function IterDiag(
 
         append!(currentSites, newSitesFlow[step+1])
         next!(pbar; showvalues=[("Size", size(hamltMatrix))])
+    end
+    return savePaths, resultsDict
+end
+export IterDiag
+
+
+function IterDiag(
+    hamltFlow::Vector{Vector{Tuple{String,Vector{Int64},Float64}}},
+    maxSize::Int64;
+    occReq::Union{Nothing,Function}=nothing,#(o,N)->ifelse(div(N,2)-2 ≤ o ≤ div(N,2)+2, true, false), ## close to half-filling
+    magzReq::Union{Nothing,Function}=nothing,#(m,N)->ifelse(m == N, true, false), ## maximally polarised states
+    localCriteria::Union{Nothing,Function}=nothing,#x->x[1] + x[2] == 1, ## impurity occupancy 1
+    corrOccReq::Union{Nothing,Function}=nothing,
+    corrMagzReq::Union{Nothing,Function}=nothing,
+    symmetries::Vector{Char}=Char[],
+    degenTol::Float64=1e-10,
+    dataDir::String="data-iterdiag",
+    correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}(),
+    vneDefDict::Dict{String, Vector{Int64}}=Dict{String, Vector{Int64}}(),
+    mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
+    silent::Bool=false,
+)
+
+    retainKeys = [k for k in keys(correlationDefDict)]
+    append!(retainKeys, [k for k in keys(vneDefDict)])
+    append!(retainKeys, [k for k in keys(mutInfoDefDict)])
+    push!(retainKeys, "energyPerSite")
+
+    @assert length(hamltFlow) > 1
+    @assert all(∈("NS"), symmetries)
+    if !isnothing(occReq)
+        @assert 'N' in symmetries
+    end
+    if !isnothing(magzReq)
+        @assert 'S' in symmetries
+    end
+
+    mutInfoToVneMap = Dict{String, Union{Nothing,NTuple{3, String}}}(name => nothing for name in keys(mutInfoDefDict))
+    for (name, (sysA, sysB)) in mutInfoDefDict
+        subsystemVneNames = []
+        for subsystem in [sysA, sysB, vcat(sysA, sysB)]
+            if subsystem ∉ values(vneDefDict)
+                subsystemVneName = randstring(5)
+                while subsystemVneName ∈ keys(vneDefDict)
+                    subsystemVneName = randstring(5)
+                end
+                vneDefDict[subsystemVneName] = subsystem
+            else 
+                subsystemVneName = [k for (k,v) in vneDefDict if v == subsystem][1]
+            end
+            push!(subsystemVneNames, subsystemVneName)
+        end
+        mutInfoToVneMap[name] = Tuple(subsystemVneNames)
+    end
+
+
+    vneOperatorToCorrMap = Dict{String, Dict{Tuple{String, Vector{Int64}}, Union{Nothing,String}}}(name => Dict() for name in keys(vneDefDict))
+    for (name, sites) in vneDefDict
+        for sequence in Iterators.product(repeat(["+-nh"], length(sites))...)
+            operator = (join(sequence), sites, 1.)
+            corrName = randstring(5)
+            while corrName ∈ keys(correlationDefDict)
+                corrName = randstring(5)
+            end
+            correlationDefDict[corrName] = [operator]
+            vneOperatorToCorrMap[name][(join(sequence), sites)] = corrName
+        end
+    end
+
+    for (k, v) in deepcopy(correlationDefDict)
+        for (j, (operatorString, members, coupling)) in enumerate(v)
+            newString, newMembers, sign = OrganiseOperator(operatorString, members)#, newSitesFlow[i])
+            correlationDefDict[k][j] = (newString, newMembers, coupling * sign)
+        end
+    end
+
+    quantumNoReq, corrQuantumNoReq = CombineRequirements((occReq, corrOccReq), (magzReq, corrMagzReq))
+
+    operatorMap = Dict(
+                       (1,1) => "n",
+                       (0,0) => "h",
+                       (1,0) => "+",
+                       (0,1) => "-",
+                      )
+
+
+    savePaths, resultsDict = IterDiag(hamltFlow, maxSize, symmetries,
+                                      correlationDefDict,
+                                      quantumNoReq, 
+                                      corrQuantumNoReq,
+                                      degenTol,
+                                      dataDir,
+                                      silent,
+                                     )
+
+    for (name, sites) in vneDefDict
+        reducedDM = zeros(2^length(sites), 2^length(sites))
+        basisVectors = collect(Iterators.product(repeat([[1, 0]], length(sites))...))
+        for (i, sequence_i) in collect(enumerate(basisVectors))
+            for j in eachindex(basisVectors)[i:end]
+                sequence_j = basisVectors[j]
+                operatorChars = prod([operatorMap[(s_i, s_j)] for (s_i, s_j) in zip(sequence_i, sequence_j)])
+                corrName = vneOperatorToCorrMap[name][(operatorChars, sites)]
+                matrixElement = resultsDict[corrName]
+                reducedDM[i, j] = matrixElement
+                reducedDM[j, i] = matrixElement'
+            end
+        end
+        reducedDM /= tr(reducedDM)
+        rdmEigVals = filter(>(0), eigvals(Hermitian(reducedDM)))
+        resultsDict[name] = -sum(rdmEigVals .* log.(rdmEigVals))
+    end
+
+    for name in keys(mutInfoDefDict)
+        vneNames = mutInfoToVneMap[name]
+        resultsDict[name] = resultsDict[vneNames[1]] + resultsDict[vneNames[2]] - resultsDict[vneNames[3]]
+    end
+
+    for name in keys(resultsDict)
+        if name ∉ retainKeys
+            delete!(resultsDict, name)
+        end
     end
     return savePaths, resultsDict
 end
