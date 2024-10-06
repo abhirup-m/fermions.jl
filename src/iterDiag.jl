@@ -181,7 +181,7 @@ function Diagonalise(
         rotation .= F.vectors
         eigVals .= F.values
     end
-    return eigVals, rotation, quantumNos
+    return round.(eigVals, digits=10), round.(rotation, digits=10), quantumNos
 end
 
 
@@ -365,13 +365,12 @@ function IterDiag(
             if !isnothing(corrQuantumNoReq)
                 indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
             end
-            finalState = rotation[:, indices[1]]
+            finalState = rotation[:, indices[sortperm(eigVals[indices])[1]]]
             for (name, correlationDef) in correlationDefDict
                 if !isnothing(corrOperatorDict[name])
                     resultsDict[name] = finalState' * corrOperatorDict[name] * finalState
                 end
             end
-
 
             next!(pbar; showvalues=[("Size", size(hamltMatrix))])
             break
@@ -537,6 +536,9 @@ function IterDiag(
     for name in keys(mutInfoDefDict)
         vneNames = mutInfoToVneMap[name]
         resultsDict[name] = resultsDict[vneNames[1]] + resultsDict[vneNames[2]] - resultsDict[vneNames[3]]
+        if resultsDict[name] < -1e-10
+            println((resultsDict[vneNames[1]], resultsDict[vneNames[2]], resultsDict[vneNames[3]]))
+        end
     end
 
     for name in keys(resultsDict)
