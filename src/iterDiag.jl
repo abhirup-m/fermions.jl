@@ -181,7 +181,7 @@ function Diagonalise(
         rotation .= F.vectors
         eigVals .= F.values
     end
-    return round.(eigVals, digits=10), round.(rotation, digits=10), quantumNos
+    return eigVals, rotation, quantumNos
 end
 
 
@@ -443,6 +443,7 @@ function IterDiag(
     silent::Bool=false,
 )
 
+    exitCode = 0
     retainKeys = [k for k in keys(correlationDefDict)]
     append!(retainKeys, [k for k in keys(vneDefDict)])
     append!(retainKeys, [k for k in keys(mutInfoDefDict)])
@@ -528,7 +529,11 @@ function IterDiag(
                 reducedDM[j, i] = matrixElement'
             end
         end
-        reducedDM /= tr(reducedDM)
+        if tr(reducedDM) < 1e-10
+            exitCode = 1
+        else
+            reducedDM /= tr(reducedDM)
+        end
         rdmEigVals = filter(>(0), eigvals(Hermitian(reducedDM)))
         resultsDict[name] = -sum(rdmEigVals .* log.(rdmEigVals))
     end
@@ -537,7 +542,7 @@ function IterDiag(
         vneNames = mutInfoToVneMap[name]
         resultsDict[name] = resultsDict[vneNames[1]] + resultsDict[vneNames[2]] - resultsDict[vneNames[3]]
         if resultsDict[name] < -1e-10
-            println((resultsDict[vneNames[1]], resultsDict[vneNames[2]], resultsDict[vneNames[3]]))
+            exitCode = 2
         end
     end
 
@@ -546,7 +551,7 @@ function IterDiag(
             delete!(resultsDict, name)
         end
     end
-    return savePaths, resultsDict
+    return savePaths, resultsDict, exitCode
 end
 export IterDiag
 
