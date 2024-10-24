@@ -267,30 +267,33 @@ export ThermalAverage
 function SpecFunc(
     eigVals::Vector{Float64},
     eigVecs::Vector{Vector{Float64}},
-    gstateIndex::Int64,
-    probeDestroy::Matrix{Float64},
-    probeCreate::Matrix{Float64},
+    probes::Dict{String,Matrix{Float64}},
     freqValues::Vector{Float64},
-    broadening::Float64;
+    standDev::Float64;
     )
-    groundState = eigVecs[gstateIndex]
-    energyGs = eigVals[gstateIndex]
+    @assert length(eigVals) == length(eigVecs)
+
+    groundState = eigVecs[sortperm(eigVals)[1]]
+    energyGs = minimum(eigVals)
     specFunc = 0 .* freqValues
-    for (energy, state) in zip(eigVals, eigVecs)
-        particleWeight = (groundState' * probeDestroy * state) * (state' * probeCreate * groundState)
-        specFunc .+= particleWeight * broadening ./ ((freqValues .+ energyGs .- energy) .^ 2 .+ broadening^2)
-        holeWeight = (state' * probeDestroy * groundState) * (groundState' * probeCreate * state)
-        specFunc .+= holeWeight * broadening ./ ((freqValues .- energyGs .+ energy) .^ 2 .+ broadening^2)
-        if abs(particleWeight) > 1e-10 || abs(holeWeight) > 1e-10
-            println("W", (particleWeight, holeWeight, energyGs - energy))
-        end
+    spectralWeights = [(0.,0.) for _ in eigVecs]
+    @showprogress Threads.@threads for index in eachindex(eigVecs)
+        excitedState = eigVecs[index]
+        spectralWeights[index] = ((groundState' * probes["destroy"] * excitedState) * (excitedState' * probes["create"] * groundState), 
+                                  (excitedState' * probes["destroy"] * groundState) * (groundState' * probes["create"] * excitedState)
+                                 )
+    end
+    for index in eachindex(eigVals)
+        specFunc .+= spectralWeights[index][1] * standDev ./ ((freqValues .+ energyGs .- eigVals[index]) .^ 2 .+ standDev^2)
+        specFunc .+= spectralWeights[index][2] * standDev ./ ((freqValues .- energyGs .+ eigVals[index]) .^ 2 .+ standDev^2)
     end
     return specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
 end
+export SpecFunc
 
 
 """
-    SpecFunc(eigVals, eigVecs, probe, probeDiag, freqArray, broadening)
+    SpecFunc(eigVals, eigVecs, probe, probeDiag, freqValues, standDev)
 
 Calculate the spectral function for the excitations defined by probe
 and probeDiag.
@@ -309,9 +312,9 @@ julia> probe = [("-", [1], 1.0)];
 
 julia> probeDag = [("+", [1], 1.0)];
 
-julia> freqArray = collect(range(-2, stop=2, length=10));
+julia> freqValues = collect(range(-2, stop=2, length=10));
 
-julia> SpecFunc(eigenVals, eigenStates, probe, probeDag, freqArray, 1e-2)
+julia> SpecFunc(eigenVals, eigenStates, probe, probeDag, freqValues, 1e-2)
 10-element Vector{Float64}:
  0.011110098865559272
  0.03392067328129922
@@ -328,98 +331,87 @@ julia> SpecFunc(eigenVals, eigenStates, probe, probeDag, freqArray, 1e-2)
 function SpecFunc(
     eigVals::Vector{Float64},
     eigVecs::Vector{Dict{BitVector,Float64}},
-    probeDestroy::Vector{Tuple{String,Vector{Int64},Float64}},
-    probeCreate::Vector{Tuple{String,Vector{Int64},Float64}},
+    probes::Dict{String,Vector{Tuple{String,Vector{Int64},Float64}}},
     freqValues::Vector{Float64},
     basisStates::Vector{Dict{BitVector,Float64}},
-    broadening::Float64;
-    gstateIndex::Int64=0,
+    standDev::Float64;
 )
-    @assert length(eigVals) == length(eigVecs)
-
-    if iszero(gstateIndex)
-        energyGs = minimum(eigVals)
-        gstateIndex = findfirst(==(minimum(eigVals)), eigVals)
-    end
 
     eigenStates = [ExpandIntoBasis(vector, basisStates) for vector in eigVecs]
 
-    probeCreate = OperatorMatrix(basisStates, probeCreate)
-    probeDestroy = OperatorMatrix(basisStates, probeDestroy)
+    probes = Dict{String,Matrix{Float64}}(name => OperatorMatrix(basisStates, probe) for (name,probe) in probes)
 
-    return SpecFunc(eigVals, eigenStates, gstateIndex, probeCreate, probeDestroy, freqValues, standDev)
+    return SpecFunc(eigVals, eigenStates, probes, freqValues, standDev)
 end
 export SpecFunc
 
 
 """
-    SpecFunc(eigVals, eigVecs, probe, probeDiag, freqArray, broadening, symmetries)
+    SpecFunc(eigVals, eigVecs, probe, probeDiag, freqValues, standDev, symmetries)
 
 Extends SpecFunc() by making use of symmetries.
 
 # Examples
 ```jldoctest
-julia> SpecFunc(eigenVals, eigenStates, probe, probeDag, freqArray, 1e-2, ['N'])
+julia> SpecFunc(eigenVals, eigenStates, probe, probeDag, freqValues, 1e-2, ['N'])
 ```
 """
 function SpecFunc(
     eigVals::Vector{Float64},
     eigVecs::Vector{Dict{BitVector,Float64}},
-    probe::Vector{Tuple{String,Vector{Int64},Float64}},
-    probeDag::Vector{Tuple{String,Vector{Int64},Float64}},
-    freqArray::Vector{Float64},
-    broadening::Float64,
+    probes::Dict{String,Vector{Tuple{String,Vector{Int64},Float64}}},
+    freqValues::Vector{Float64},
+    basisStates::Vector{Dict{BitVector,Float64}},
+    standDev::Float64,
     symmetries::Vector{Char};
-    gsIndex::Int64=0,
 )
 
-    @assert length(eigVals) == length(eigVecs)
-    gstateEnergy, gstateVector = ifelse(iszero(gsIndex), 
-                                        (minimum(eigenVals),eigVecs[eigVals .== energyGs][1]),
-                                        (eigenVals[gsIndex], eigVecs[gsIndex])
-                                       )
+    groundState = eigVecs[sortperm(eigVals)[1]]
 
     # calculate sector of excited states
-    excitedSector = GetSector(ApplyOperator(probe, gstateVector), symmetries)
-    excitedSectorDag = GetSector(ApplyOperator(probeDag, gstateVector), symmetries)
+    excitedSectorHole = GetSector(ApplyOperator(probes["destroy"], groundState), symmetries)
+    excitedSectorParticle = GetSector(ApplyOperator(probes["create"], groundState), symmetries)
 
-    classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigenVals)
-    minimalEigVecs = Dict{BitVector, Float64}[[gstateVector]; classifiedSpectrum[excitedSector]; classifiedSpectrum[excitedSectorDag];]
-    minimalEigVals = Float64[[energyGs]; classifiedEnergies[excitedSector]; classifiedEnergies[excitedSectorDag];]
+    classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
+    minimalEigVecs = Dict{BitVector, Float64}[[groundState]; classifiedSpectrum[excitedSectorHole]; classifiedSpectrum[excitedSectorParticle];]
+    minimalEigVals = Float64[[minimum(eigVals)]; classifiedEnergies[excitedSectorHole]; classifiedEnergies[excitedSectorParticle];]
 
-    return SpecFunc(minimalEigVals, minimalEigVecs, probe, probeDag, freqArray, broadening; gsIndex=1)
+    return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev)
 end
 export SpecFunc
 
 
 function SpecFunc(
-    eigVals::Union{Dict{Tuple{Int64}, Vector{Float64}}, Dict{Tuple{Int64, Int64}, Vector{Float64}}},
-    eigVecs::Union{Dict{Tuple{Int64}, Vector{Dict{BitVector,Float64}}}, Dict{Tuple{Int64, Int64}, Vector{Dict{BitVector,Float64}}}},
-    probe::Vector{Tuple{String,Vector{Int64},Float64}},
-    probeDag::Vector{Tuple{String,Vector{Int64},Float64}},
-    freqArray::Vector{Float64},
-    broadening::Float64,
-    groundSector::Union{Tuple{Int64}, Tuple{Int64,Int64}},
+    eigVals::Vector{Float64},
+    eigVecs::Vector{Dict{BitVector,Float64}},
+    probes::Dict{String,Vector{Tuple{String,Vector{Int64},Float64}}},
+    freqValues::Vector{Float64},
+    basisStates::Vector{Dict{BitVector,Float64}},
+    standDev::Float64,
     symmetries::Vector{Char},
+    groundStateSector::Union{Tuple{Int64}, Tuple{Int64,Int64}},
 )
 
-    gstateEnergy = minimum(eigVals[groundSector])
-    gstateVector = eigVecs[groundSector][eigVals[groundSector] .== gstateEnergy][1]
+    @assert length(eigVals) == length(eigVecs)
+    classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
+
+    groundState = classifiedSpectrum[groundStateSector][sortperm(classifiedEnergies[groundStateSector])[1]]
 
     # calculate sector of excited states
-    excitedSector = GetSector(ApplyOperator(probe, gstateVector), symmetries)
-    excitedSectorDag = GetSector(ApplyOperator(probeDag, gstateVector), symmetries)
+    excitedSectorHole = GetSector(ApplyOperator(probes["destroy"], groundState), symmetries)
+    excitedSectorParticle = GetSector(ApplyOperator(probes["create"], groundState), symmetries)
 
-    minimalEigVecs = Dict{BitVector, Float64}[[gstateVector]; eigVecs[excitedSector]; eigVecs[excitedSectorDag];]
-    minimalEigVals = Float64[[gstateEnergy]; eigVals[excitedSector]; eigVals[excitedSectorDag];]
+    minimalEigVecs = Dict{BitVector, Float64}[[groundState]; classifiedSpectrum[excitedSectorHole]; classifiedSpectrum[excitedSectorParticle];]
+    minimalEigVals = Float64[[minimum(classifiedEnergies[groundStateSector])]; classifiedEnergies[excitedSectorHole]; classifiedEnergies[excitedSectorParticle];]
+    @assert minimalEigVals[1] == minimum(minimalEigVals)
 
-    return SpecFunc(minimalEigVals, minimalEigVecs, probe, probeDag, freqArray, broadening; gsIndex=1)
+    return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev)
 end
 export SpecFunc
 
 
 """
-    SpecFunc(eigVals, eigVecMatrix, probe, probeDiag, freqArray, broadening)
+    SpecFunc(eigVals, eigVecMatrix, probe, probeDiag, freqValues, standDev)
 
 Extends SpecFunc() by directly accepting matrices instead of abstract states and operators.
 Useful when the matrix representations are known but the basis is very complicated.
@@ -427,39 +419,12 @@ Useful when the matrix representations are known but the basis is very complicat
 function SpecFunc(
     eigVals::Vector{Float64},
     eigVecMatrix::Matrix{Float64},
-    probe::Matrix{Float64},
-    probeDag::Matrix{Float64},
-    freqArray::Vector{Float64},
-    broadening::Float64;
-    gsIndex::Int64=0,
+    probes::Dict{String,Matrix{Float64}},
+    freqValues::Vector{Float64},
+    standDev::Float64,
 )
 
     eigVecs = [collect(vec) for vec in eachcol(eigVecMatrix)]
-    @assert length(eigVals) == length(eigVecs)
-
-    if iszero(gsIndex)
-        energyGs = minimum(eigVals)
-        groundState = eigVecs[eigVals .== energyGs][1]
-    else
-        @assert gsIndex ≤ length(eigVals)
-        energyGs = eigVals[gsIndex]
-        groundState = eigVecs[gsIndex]
-    end
-
-    # calculate c_ν |GS>
-    excitedState = probe * groundState
-
-    # calculate c^†_ν |GS>
-    excitedStateDag = probeDag * groundState
-
-    # create array of frequency points and spectral function
-    specFunc = 0 .* freqArray
-    for (energy, state) in zip(eigVals, eigVecs)
-        particleWeight = (state' * excitedState)^2
-        specFunc .+= particleWeight * broadening ./ ((freqArray .- energyGs .+ energy) .^ 2 .+ broadening^2)
-        holeWeight = (state' * excitedStateDag)^2
-        specFunc .+= holeWeight * broadening ./ ((freqArray .+ energyGs .- energy) .^ 2 .+ broadening^2)
-    end
-    return specFunc
+    return SpecFunc(eigVals, eigVecs, probes, freqValues, standDev)
 end
 export SpecFunc
