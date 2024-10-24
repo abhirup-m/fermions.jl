@@ -332,7 +332,7 @@ function StateOverlap(
         state1::Dict{BitVector,Float64}, 
         state2::Dict{BitVector,Float64}
     )
-    overlap = 0
+    overlap = 0.
     keys2 = keys(state2)
     for (key, val) in state1
         if key ∈ keys2
@@ -348,7 +348,10 @@ function ExpandIntoBasis(
         state::Dict{BitVector,Float64}, 
         basisStates::Vector{Dict{BitVector,Float64}},
     )
-    coefficients = fetch.([Threads.@spawn StateOverlap(bstate, state) for bstate in basisStates])
+    coefficients = zeros(length(basisStates))
+    for (index, bstate) in enumerate(basisStates)
+        coefficients[index] = StateOverlap(bstate, state)
+    end
     return coefficients
 end
 export ExpandIntoBasis

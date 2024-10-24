@@ -103,6 +103,8 @@ function CombineRequirements(
         requirement = (q, N) -> magzReq(q[1], N)
     elseif !isnothing(occReq) && !isnothing(magzReq)
         requirement = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
+    else
+        requirement = (q, N) -> true
     end
     return requirement
 end
@@ -292,7 +294,8 @@ function IterDiag(
     corrQuantumNoReq::Union{Nothing,Function},
     degenTol::Float64,
     dataDir::String,
-    silent::Bool,
+    silent::Bool;
+    specFuncOperators::Dict{String, Vector{Matrix{Float64}}}=Dict{String, Vector{Matrix{Float64}}}(),
 )
 
     currentSites = Int64[]
@@ -347,6 +350,11 @@ function IterDiag(
                 corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
             end
         end
+        for name in keys(specFuncOperators)
+            if name in keys(corrOperatorDict)
+                push!(specFuncOperators[name], corrOperatorDict[name])
+            end
+        end
 
         if step == length(hamltFlow)
             serialize(savePaths[step], Dict("basis" => rotation,
@@ -376,27 +384,28 @@ function IterDiag(
             break
         end
 
+        newBasis = BasisStates(length(newSitesFlow[step+1]))
+
+        identityEnv = length(newSitesFlow[step+1]) == 1 ? I(2) : kron(fill(I(2), length(newSitesFlow[step+1]))...)
+
+        saveDict = Dict("basis" => rotation,
+                        "eigVals" => eigVals,
+                        "quantumNos" => quantumNos,
+                        "currentSites" => currentSites,
+                        "newSites" => newSitesFlow[step],
+                        "bondAntiSymmzer" => bondAntiSymmzer,
+                        "identityEnv" => identityEnv,
+                        "results" => resultsDict,
+                       )
+
+        serialize(savePaths[step], saveDict)
+
         if length(eigVals) > div(maxSize, 2^length(newSitesFlow[step+1]))
             rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, 
                                                              div(maxSize, 2^length(newSitesFlow[step+1])), 
                                                              degenTol, currentSites, quantumNos
                                                             )
         end
-
-        newBasis = BasisStates(length(newSitesFlow[step+1]))
-
-        identityEnv = length(newSitesFlow[step+1]) == 1 ? I(2) : kron(fill(I(2), length(newSitesFlow[step+1]))...)
-
-        serialize(savePaths[step], Dict("basis" => rotation,
-                                        "eigVals" => eigVals,
-                                        "quantumNos" => quantumNos,
-                                        "currentSites" => currentSites,
-                                        "newSites" => newSitesFlow[step],
-                                        "bondAntiSymmzer" => bondAntiSymmzer,
-                                        "identityEnv" => identityEnv,
-                                        "results" => resultsDict,
-                                       )
-                 )
 
         if !isnothing(quantumNos)
             quantumNos = UpdateQuantumNos(newBasis, symmetries, newSitesFlow[step+1], quantumNos)
@@ -421,7 +430,7 @@ function IterDiag(
         append!(currentSites, newSitesFlow[step+1])
         next!(pbar; showvalues=[("Size", size(hamltMatrix))])
     end
-    return savePaths, resultsDict
+    return savePaths, resultsDict, specFuncOperators
 end
 export IterDiag
 
@@ -440,6 +449,7 @@ function IterDiag(
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}(),
     vneDefDict::Dict{String, Vector{Int64}}=Dict{String, Vector{Int64}}(),
     mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
+    specFuncDefDict::Dict{String, Tuple{String, Vector{Int64}}}=Dict{String, Tuple{String, Vector{Int64}}}(),
     silent::Bool=false,
 )
 
@@ -447,7 +457,9 @@ function IterDiag(
     retainKeys = [k for k in keys(correlationDefDict)]
     append!(retainKeys, [k for k in keys(vneDefDict)])
     append!(retainKeys, [k for k in keys(mutInfoDefDict)])
+    append!(retainKeys, [k for k in keys(specFuncDefDict)])
     push!(retainKeys, "energyPerSite")
+    @assert allunique(retainKeys)
 
     @assert length(hamltFlow) > 1
     @assert all(∈("NS"), symmetries)
@@ -490,6 +502,12 @@ function IterDiag(
         end
     end
 
+    specFuncToCorrMap = Dict{String, String}()
+    for (name, operator) in specFuncDefDict
+        specFuncToCorrMap[name] = randstring(5)
+        correlationDefDict[specFuncToCorrMap[name]] = [(operator..., 1.)]
+    end
+
     for (k, v) in deepcopy(correlationDefDict)
         for (j, (operatorString, members, coupling)) in enumerate(v)
             newString, newMembers, sign = OrganiseOperator(operatorString, members)#, newSitesFlow[i])
@@ -507,14 +525,17 @@ function IterDiag(
                       )
 
 
-    savePaths, resultsDict = IterDiag(hamltFlow, maxSize, symmetries,
+    savePaths, resultsDict, specFuncOperators = IterDiag(hamltFlow, maxSize, symmetries,
                                       correlationDefDict,
                                       quantumNoReq, 
                                       corrQuantumNoReq,
                                       degenTol,
                                       dataDir,
                                       silent,
+                                      specFuncOperators=Dict(name => Matrix{Float64}[] for name in values(specFuncToCorrMap))
                                      )
+
+    specFuncOperators = Dict(name => specFuncOperators[corrName] for (name, corrName) in specFuncToCorrMap)
 
     for (name, sites) in vneDefDict
         reducedDM = zeros(2^length(sites), 2^length(sites))
@@ -551,9 +572,67 @@ function IterDiag(
             delete!(resultsDict, name)
         end
     end
-    return savePaths, resultsDict, exitCode
+    if isempty(vneDefDict) && isempty(mutInfoDefDict) && isempty(specFuncOperators)
+        return savePaths, resultsDict
+    elseif !(isempty(vneDefDict) && isempty(mutInfoDefDict)) && isempty(specFuncOperators)
+        return savePaths, resultsDict, exitCode
+    elseif isempty(vneDefDict) && isempty(mutInfoDefDict) && !isempty(specFuncOperators)
+        return savePaths, resultsDict, specFuncOperators
+    else
+        return savePaths, resultsDict, exitCode
+    end
 end
 export IterDiag
+
+
+function IterSpecFunc(
+        savePaths::Vector{String},
+        specFuncOperators::Dict{String, Vector{Matrix{Float64}}},
+        freqValues::Vector{Float64},
+        standDev::Float64;
+        occReq::Union{Nothing,Function}=nothing,
+        magzReq::Union{Nothing,Function}=nothing,
+        excOccReq::Union{Nothing,Function}=nothing,
+        excMagzReq::Union{Nothing,Function}=nothing,
+    )
+    @assert issetequal(keys(specFuncOperators), ["create", "destroy"])
+    display(specFuncOperators)
+    quantumNoReq = CombineRequirements(occReq, magzReq)
+    excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
+    totalSpecFunc = zeros(size(freqValues)...)
+    
+    broadening(x, standDev) = standDev ./ (x.^2 .+ standDev^2)
+    #=broadening(x, standDev) = exp.(-0.5 .* (x.^2 ./ standDev^2)) ./ (standDev * √(2π))=#
+    for (i, savePath) in collect(enumerate(savePaths[end-length(specFuncOperators["create"]):end-1]))
+        specFunc = zeros(size(freqValues)...)
+        data = deserialize(savePath)
+        basis = data["basis"]
+        eigVals = data["eigVals"]
+        quantumNos = data["quantumNos"]
+        currentSites = data["currentSites"]
+        gsIndex = sortperm(eigVals)[[quantumNoReq(q, length(currentSites)) for q in quantumNos]][1]
+        gstate = basis[:, gsIndex]
+        gstateEnergy = eigVals[gsIndex]
+
+        excitedIndices = [excQuantumNoReq(q, length(currentSites)) for q in quantumNos]
+        excitedStates = basis[:, excitedIndices]
+        excitedEnergies = eigVals[excitedIndices]
+        for (energy, state) in zip(excitedEnergies, eachcol(excitedStates))
+            particleWeight = (gstate' * specFuncOperators["destroy"][i] * state) * (state' * specFuncOperators["create"][i] * gstate)
+            specFunc .+= particleWeight * broadening(freqValues .+ gstateEnergy .- energy, standDev)
+            holeWeight = (gstate' * specFuncOperators["create"][i] * state) * (state' * specFuncOperators["destroy"][i] * gstate)
+            specFunc .+= holeWeight * broadening(freqValues .- gstateEnergy .+ energy, standDev)
+            
+            if abs(particleWeight) > 1e-10 || abs(holeWeight) > 1e-10
+                println("W", (particleWeight, holeWeight, gstateEnergy - energy))
+            end
+        end
+        totalSpecFunc .+= specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
+        println(round.(specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1)), digits=5))
+    end
+    #=totalSpecFunc ./= sum(totalSpecFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))=#
+    return totalSpecFunc
+end
 
 
 function UpdateRequirements(

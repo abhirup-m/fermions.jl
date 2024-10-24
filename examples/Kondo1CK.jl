@@ -5,7 +5,7 @@ include("../src/iterDiag.jl")
 totalSites = 7
 initSites = 1
 kondoJ = 1.
-maxSize = 500
+maxSize = 100
 hop_t = 0.1
 
 spinFlipCorrd2 = Tuple{String, Vector{Int64}, Float64}[("+-+-", [1, 2, 2 * totalSites + 2, 2 * totalSites + 1], 1.0), ("+-+-", [2, 1, 2 * totalSites + 1, 2 * totalSites + 2], 1.0)]

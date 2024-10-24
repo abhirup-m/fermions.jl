@@ -264,6 +264,31 @@ end
 export ThermalAverage
 
 
+function SpecFunc(
+    eigVals::Vector{Float64},
+    eigVecs::Vector{Vector{Float64}},
+    gstateIndex::Int64,
+    probeDestroy::Matrix{Float64},
+    probeCreate::Matrix{Float64},
+    freqValues::Vector{Float64},
+    broadening::Float64;
+    )
+    groundState = eigVecs[gstateIndex]
+    energyGs = eigVals[gstateIndex]
+    specFunc = 0 .* freqValues
+    for (energy, state) in zip(eigVals, eigVecs)
+        particleWeight = (groundState' * probeDestroy * state) * (state' * probeCreate * groundState)
+        specFunc .+= particleWeight * broadening ./ ((freqValues .+ energyGs .- energy) .^ 2 .+ broadening^2)
+        holeWeight = (state' * probeDestroy * groundState) * (groundState' * probeCreate * state)
+        specFunc .+= holeWeight * broadening ./ ((freqValues .- energyGs .+ energy) .^ 2 .+ broadening^2)
+        if abs(particleWeight) > 1e-10 || abs(holeWeight) > 1e-10
+            println("W", (particleWeight, holeWeight, energyGs - energy))
+        end
+    end
+    return specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
+end
+
+
 """
     SpecFunc(eigVals, eigVecs, probe, probeDiag, freqArray, broadening)
 
@@ -303,39 +328,26 @@ julia> SpecFunc(eigenVals, eigenStates, probe, probeDag, freqArray, 1e-2)
 function SpecFunc(
     eigVals::Vector{Float64},
     eigVecs::Vector{Dict{BitVector,Float64}},
-    probe::Vector{Tuple{String,Vector{Int64},Float64}},
-    probeDag::Vector{Tuple{String,Vector{Int64},Float64}},
-    freqArray::Vector{Float64},
+    probeDestroy::Vector{Tuple{String,Vector{Int64},Float64}},
+    probeCreate::Vector{Tuple{String,Vector{Int64},Float64}},
+    freqValues::Vector{Float64},
+    basisStates::Vector{Dict{BitVector,Float64}},
     broadening::Float64;
-    gsIndex::Int64=0,
+    gstateIndex::Int64=0,
 )
-
     @assert length(eigVals) == length(eigVecs)
 
-    if iszero(gsIndex)
+    if iszero(gstateIndex)
         energyGs = minimum(eigVals)
-        groundState = eigVecs[eigVals .== energyGs][1]
-    else
-        @assert gsIndex ≤ length(eigVals)
-        energyGs = eigVals[gsIndex]
-        groundState = eigVecs[gsIndex]
+        gstateIndex = findfirst(==(minimum(eigVals)), eigVals)
     end
 
-    # calculate c_ν |GS>
-    excitedState = ApplyOperator(probe, groundState)
+    eigenStates = [ExpandIntoBasis(vector, basisStates) for vector in eigVecs]
 
-    # calculate c^†_ν |GS>
-    excitedStateDag = ApplyOperator(probeDag, groundState)
+    probeCreate = OperatorMatrix(basisStates, probeCreate)
+    probeDestroy = OperatorMatrix(basisStates, probeDestroy)
 
-    # create array of frequency points and spectral function
-    specFunc = 0 .* freqArray
-    for (energy, state) in zip(eigVals, eigVecs)
-        particleWeight = StateOverlap(state, excitedState)^2
-        specFunc .+= particleWeight * broadening ./ ((freqArray .- energyGs .+ energy) .^ 2 .+ broadening^2)
-        holeWeight = StateOverlap(state, excitedStateDag)^2
-        specFunc .+= holeWeight * broadening ./ ((freqArray .+ energyGs .- energy) .^ 2 .+ broadening^2)
-    end
-    return specFunc
+    return SpecFunc(eigVals, eigenStates, gstateIndex, probeCreate, probeDestroy, freqValues, standDev)
 end
 export SpecFunc
 
