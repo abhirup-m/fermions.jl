@@ -596,7 +596,6 @@ function IterSpecFunc(
         excMagzReq::Union{Nothing,Function}=nothing,
     )
     @assert issetequal(keys(specFuncOperators), ["create", "destroy"])
-    display(specFuncOperators)
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
     totalSpecFunc = zeros(size(freqValues)...)
@@ -606,29 +605,20 @@ function IterSpecFunc(
     for (i, savePath) in collect(enumerate(savePaths[end-length(specFuncOperators["create"]):end-1]))
         specFunc = zeros(size(freqValues)...)
         data = deserialize(savePath)
-        basis = data["basis"]
+        basis = [collect(col) for col in eachcol(data["basis"])]
         eigVals = data["eigVals"]
         quantumNos = data["quantumNos"]
         currentSites = data["currentSites"]
-        gsIndex = sortperm(eigVals)[[quantumNoReq(q, length(currentSites)) for q in quantumNos]][1]
-        gstate = basis[:, gsIndex]
-        gstateEnergy = eigVals[gsIndex]
+        minimalStates = [basis[quantumNoReq.(quantumNos, length(currentSites))];
+                         basis[excQuantumNoReq.(quantumNos, length(currentSites))];
+                        ]
+        minimalEnergies = [eigVals[quantumNoReq.(quantumNos, length(currentSites))];
+                           eigVals[excQuantumNoReq.(quantumNos, length(currentSites))];
+                          ]
 
-        excitedIndices = [excQuantumNoReq(q, length(currentSites)) for q in quantumNos]
-        excitedStates = basis[:, excitedIndices]
-        excitedEnergies = eigVals[excitedIndices]
-        for (energy, state) in zip(excitedEnergies, eachcol(excitedStates))
-            particleWeight = (gstate' * specFuncOperators["destroy"][i] * state) * (state' * specFuncOperators["create"][i] * gstate)
-            specFunc .+= particleWeight * broadening(freqValues .+ gstateEnergy .- energy, standDev)
-            holeWeight = (gstate' * specFuncOperators["create"][i] * state) * (state' * specFuncOperators["destroy"][i] * gstate)
-            specFunc .+= holeWeight * broadening(freqValues .- gstateEnergy .+ energy, standDev)
-            
-            if abs(particleWeight) > 1e-10 || abs(holeWeight) > 1e-10
-                println("W", (particleWeight, holeWeight, gstateEnergy - energy))
-            end
-        end
-        totalSpecFunc .+= specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
-        println(round.(specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1)), digits=5))
+        specFunc = SpecFunc(minimalEnergies, minimalStates, Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)), freqValues, standDev)
+        totalSpecFunc .+= specFunc
+        #=println(round.(specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1)), digits=5))=#
     end
     #=totalSpecFunc ./= sum(totalSpecFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))=#
     return totalSpecFunc

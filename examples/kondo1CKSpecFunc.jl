@@ -1,12 +1,10 @@
 using fermions, Plots, Measures
 include("../src/iterDiag.jl")
-include("../src/correlations.jl")
 
-totalSites = 2
 initSites = 1
-maxSize = 5000
+maxSize = 1500
 kondoJ = 1.
-hop_t = 1.1
+hop_t = 1.
 
 function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64)
     hamFlow = Vector{Tuple{String, Vector{Int64}, Float64}}[]
@@ -26,52 +24,53 @@ function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ:
 
     push!(hamFlow, initHam)
 
-    for site in initSites+1:totalSites
+    for site in initSites+1:2:totalSites
         newTerm = []
         push!(newTerm, ("+-",  [1 + 2 * site, -1 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
         push!(newTerm, ("+-",  [-1 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
         push!(newTerm, ("+-",  [2 + 2 * site, 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
         push!(newTerm, ("+-",  [2 * site, 2 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
 
+        push!(newTerm, ("+-",  [3 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
+        push!(newTerm, ("+-",  [1 + 2 * site, 3 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
+        push!(newTerm, ("+-",  [4 + 2 * site, 2 + 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
+        push!(newTerm, ("+-",  [2 + 2 * site, 4 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
+
         push!(hamFlow, newTerm)
     end
     return hamFlow
 end
 
-hamFlow = getHamFlow(initSites, totalSites, hop_t, kondoJ)
-
-savePaths, resultsDict, specFuncOperators = IterDiag(hamFlow, maxSize;
-                             symmetries=Char['N', 'S'],
-                             # symmetries=Char['S'],
-                             #=symmetries=Char['N'],=#
-                             #=magzReq=(m, N) -> -2 ≤ m ≤ 3,=#
-                             #=occReq=(x, N) -> div(N, 2) - 4 ≤ x ≤ div(N, 2) + 4,=#
-                             #=corrMagzReq=(m, N) -> m == ifelse(isodd(div(N, 2)), 1, 0),=#
-                             #=corrOccReq=(x, N) -> x == div(N, 2),=#
-                             specFuncDefDict=Dict("create" => ("+", [1]), "destroy" => ("-", [1])),
-                            )
-#=specFuncOperators = Dict("destroy" => specFuncOperators["imp"][1], "create" => specFuncOperators["imp"][2])=#
-freqValues = collect(-1:0.5:1)
-standDev = 0.02
-@time specFunc = IterSpecFunc(savePaths, specFuncOperators, freqValues, standDev;
-                        occReq=(x,N) -> x == div(N,2),
-                        #=excOccReq=(x,N) -> abs(x - div(N,2)) == 1,=#
-                       )
-#=p = plot(freqValues, specFunc)=#
-#=savefig(p, "specfunc.pdf")=#
-#=display(p)=#
-
-
-function ExactResults()
-    totalSpecFunc = zeros(length(freqValues))
-    @showprogress for (i, num) in enumerate(initSites:totalSites)
-        basis = BasisStates(2 * (1 + num))#; totOccReq=[num, 1 + num, 2 + num], magzReq=[-1, 0, 1])#, localCriteria=x->x[1]+x[2]==1)
-        fullHam = vcat(hamFlow[1:i]...)
-        E, X = Spectrum(fullHam, basis)
-        specFunc = SpecFunc(E, X, [("-", [1], 1.)], [("+", [1], 1.)], freqValues, basis, standDev)
-        println(round.(specFunc, digits=5))
-        totalSpecFunc .+= specFunc
-    end
-    println(round.(totalSpecFunc, digits=5))
+p = plot()
+for totalSites in 20:20:100
+    hamFlow = getHamFlow(initSites, totalSites, hop_t, kondoJ)
+    specFuncDefDict = Dict("create" => ("+-+", [1,2,4]), "destroy" => ("+--", [2,1,4]))
+    savePaths, resultsDict, specFuncOperators = IterDiag(hamFlow, maxSize;
+                                 symmetries=Char['N', 'S'],
+                                 specFuncDefDict=specFuncDefDict,
+                                 occReq=(x,N)->abs(x-div(N,2)) ≤ 4
+                                )
+    freqValues = collect(-4:0.01:4)
+    standDev = 0.1
+    @time totalSpecFunc = IterSpecFunc(savePaths, specFuncOperators, freqValues, standDev;
+                                       occReq=(x,N) -> x == div(N,2),
+                           )
+    plot!(p, freqValues, totalSpecFunc)
 end
-ExactResults()
+
+
+#=function ExactResults()=#
+#=    totalSpecFunc = zeros(length(freqValues))=#
+#=    @showprogress for (i, num) in enumerate(initSites:2:totalSites)=#
+#=        basis = BasisStates(2 * (1 + num); localCriteria=x->x[1]+x[2]==1, totOccReq=[num, 1 + num, 2 + num])=#
+#=        fullHam = vcat(hamFlow[1:i]...)=#
+#=        E, X = Spectrum(fullHam, basis)=#
+#=        specFunc = SpecFunc(E, X, Dict("create" => [(specFuncDefDict["create"]..., 1.)], "destroy" => [(specFuncDefDict["destroy"]..., 1.)]), =#
+#=                            freqValues, basis, standDev, ['N'], (1+num,))=#
+#=        totalSpecFunc .+= specFunc=#
+#=    end=#
+#=    return totalSpecFunc=#
+#=end=#
+#=totalSpecFunc = ExactResults()=#
+#=plot!(p, freqValues, totalSpecFunc, linestyle=:dot)=#
+display(p)
