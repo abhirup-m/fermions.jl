@@ -25,51 +25,10 @@ update_theme!(
                        ),
              )
 
-function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64, field::Float64,)
-    hamFlow = Vector{Tuple{String, Vector{Int64}, Float64}}[]
-    initHam = Tuple{String, Vector{Int64}, Float64}[]
-    for site in 1:(initSites-1)
-        push!(initHam, ("+-",  [1 + 2 * site, 3 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
-        push!(initHam, ("+-",  [3 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
-        push!(initHam, ("+-",  [2 + 2 * site, 4 + 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
-        push!(initHam, ("+-",  [4 + 2 * site, 2 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
-    end
-
-    for site in 0:initSites
-        push!(initHam, ("n",  [1 + 2 * site], field))
-        push!(initHam, ("n",  [2 + 2 * site], -field))
-    end
-
-    push!(initHam, ("nn",  [1, 3], kondoJ/4)) # n_{d up, n_{0 up}
-    push!(initHam, ("nn",  [1, 4], -kondoJ/4)) # n_{d up, n_{0 down}
-    push!(initHam, ("nn",  [2, 3], -kondoJ/4)) # n_{d down, n_{0 up}
-    push!(initHam, ("nn",  [2, 4], kondoJ/4)) # n_{d down, n_{0 down}
-    push!(initHam, ("+-+-",  [1, 2, 4, 3], kondoJ/2)) # S_d^+ S_0^-
-    push!(initHam, ("+-+-",  [2, 1, 3, 4], kondoJ/2)) # S_d^- S_0^+
-
-    push!(hamFlow, initHam)
-
-    for site in initSites+1:addPerStep:totalSites
-        newTerm = []
-        for newSite in site:(site+addPerStep-1)
-            push!(newTerm, ("+-",  [1 + 2 * newSite, -1 + 2 * newSite], -hop_t)) # c^†_{j,up} c_{j+1,up}
-            push!(newTerm, ("+-",  [-1 + 2 * newSite, 1 + 2 * newSite], -hop_t)) # c^†_{j+1,up} c_{j,up}
-            push!(newTerm, ("+-",  [2 + 2 * newSite, 2 * newSite], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
-            push!(newTerm, ("+-",  [2 * newSite, 2 + 2 * newSite], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
-
-            push!(newTerm, ("n",  [1 + 2 * newSite], field))
-            push!(newTerm, ("n",  [-1 + 2 * newSite], -field))
-        end
-
-        push!(hamFlow, newTerm)
-    end
-    return hamFlow
-end
 
 function IterResults(hamFlow, totalSites::Int64)
     savePaths, resultsDict, specFuncOperators = IterDiag(hamFlow, maxSize;
                                                          symmetries=Char['N'],#, 'S'],
-                                 #=correlationDefDict=Dict("ndup" => [("n", [1], 1.)], "nddown" => [("n", [2], 1.)]),=#
                                  specFuncDefDict=specFuncDefDict,
                                  occReq=(x,N)->abs(x-div(N,2)) ≤ 4
                                 )
@@ -90,7 +49,6 @@ function ExactResults(hamFlow, totalSites::Int64)
                            )
         fullHam = vcat(hamFlow[1:i]...)
         E, X = Spectrum(fullHam, basis)
-        #=println(length(E))=#
         specFunc = SpecFunc(E, X,
                             specFuncDefDict,
                             freqValues, basis, standDev, 
@@ -98,19 +56,21 @@ function ExactResults(hamFlow, totalSites::Int64)
                             (1+num,);
                             #=symmetrise=true,=#
                            )
-        #=println(i, round.(specFunc, digits=5))=#
         totalSpecFunc .+= specFunc
     end
     return totalSpecFunc
 end
 
-function BenchMark(kondoJ, hop_t)
+function BenchMark(
+        kondoJVals::Vector{Float64},
+        hop_t::Float64,
+    )
     f = Figure(size=(700, 800))
     axes = [Axis(f[i, 1], xlabel=L"\omega",ylabel=L"A(\omega)") for i in 1:2]
     errorAxes = [Axis(f[i, 1], width=Relative(0.4), height=Relative(0.4), halign=0.2, valign=0.85, yticklabelsize=20, xticklabelsvisible=false) for i in 1:2]
     axisIndex = 1
     for totalSites in [5, 6]
-        for kondoJ in [1., 0.]
+        for kondoJ in kondoJVals
             kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=1e-5)
             hamFlow = MinceHamiltonian(kondoModel, collect(2 * (1 + initSites):2 * addPerStep:2 * (1 + totalSites)))
             specFuncIter = IterResults(hamFlow, totalSites)
@@ -123,16 +83,18 @@ function BenchMark(kondoJ, hop_t)
         axislegend(axes[axisIndex])
         axisIndex += 1
     end
-    #=display(f)=#
     save("specFuncComparison.pdf", f)
 end
 
 
-function LargerSystem(kondoJ, hop_t)
+function LargerSystem(
+        kondoJVals::Vector{Float64},
+        hop_t::Float64
+    )
     f = Figure()
     totalSites = 29
     ax = Axis(f[1,1], xlabel=L"\omega",ylabel=L"A(\omega)", title=L"\eta=%$(standDev), L=%$(totalSites+1), t=%$(hop_t)", yscale=log10)
-    for kondoJ in [1., 0.5, 0.]
+    for kondoJ in kondoJVals
         kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=-1e-5)
         hamFlow = MinceHamiltonian(kondoModel, collect(2 * (1 + initSites):2 * addPerStep:2 * (1 + totalSites)))
         specFuncIter = IterResults(hamFlow, totalSites)
@@ -146,11 +108,12 @@ end
 #=specFuncDefDict = Dict("create" => [("+-+", [1,2,4], 0.5)], "destroy" => [("+--", [2,1,4], 0.5)])=#
 specFuncDefDict = Dict("create" => [("+-+", [2,1,3], 0.5), ("+-+", [1,2,4], 0.5)], "destroy" => [("+--", [1,2,3], 0.5), ("+--", [2,1,4], 0.5)])
 initSites = 1
-maxSize = 1000
-kondoJ = 0.
-hop_t = 0.001
+maxSize = 1500
+hop_t = 0.01
 addPerStep = 1
-standDev = 0.01
+standDev = 0.02
+freqValues = collect(0:0.01:2.)
+BenchMark([1., 0.], hop_t)
+
 freqValues = collect(-2:0.005:2.)
-#=BenchMark(kondoJ, hop_t)=#
-LargerSystem(kondoJ, hop_t)
+LargerSystem([1., 0.5, 0.], hop_t)
