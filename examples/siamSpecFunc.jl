@@ -1,5 +1,5 @@
 using fermions, CairoMakie, Measures, ProgressMeter
-#=include("../src/base.jl")=#
+include("../src/base.jl")
 include("../src/correlations.jl")
 include("../src/iterDiag.jl")
 
@@ -25,7 +25,7 @@ update_theme!(
                        ),
              )
 
-function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64, field::Float64,)
+function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, hyb::Float64, impCorr::Float64, field::Float64,)
     hamFlow = Vector{Tuple{String, Vector{Int64}, Float64}}[]
     initHam = Tuple{String, Vector{Int64}, Float64}[]
     for site in 1:(initSites-1)
@@ -39,13 +39,14 @@ function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ:
         push!(initHam, ("n",  [1 + 2 * site], field))
         push!(initHam, ("n",  [2 + 2 * site], -field))
     end
+    push!(initHam, ("n",  [1], -impCorr/2))
+    push!(initHam, ("n",  [2], -impCorr/2))
+    push!(initHam, ("nn",  [1,2], impCorr))
 
-    push!(initHam, ("nn",  [1, 3], kondoJ/4)) # n_{d up, n_{0 up}
-    push!(initHam, ("nn",  [1, 4], -kondoJ/4)) # n_{d up, n_{0 down}
-    push!(initHam, ("nn",  [2, 3], -kondoJ/4)) # n_{d down, n_{0 up}
-    push!(initHam, ("nn",  [2, 4], kondoJ/4)) # n_{d down, n_{0 down}
-    push!(initHam, ("+-+-",  [1, 2, 4, 3], kondoJ/2)) # S_d^+ S_0^-
-    push!(initHam, ("+-+-",  [2, 1, 3, 4], kondoJ/2)) # S_d^- S_0^+
+    push!(initHam, ("+-",  [1, 3], -hyb)) # c^†_{j,up} c_{j+1,up}
+    push!(initHam, ("+-",  [3, 1], -hyb)) # c^†_{j+1,up} c_{j,up}
+    push!(initHam, ("+-",  [2, 4], -hyb)) # c^†_{j,dn} c_{j+1,dn}
+    push!(initHam, ("+-",  [4, 2], -hyb)) # c^†_{j+1,dn} c_{j,dn}
 
     push!(hamFlow, initHam)
 
@@ -71,12 +72,11 @@ function IterResults(hamFlow, totalSites::Int64)
                                                          symmetries=Char['N'],#, 'S'],
                                  #=correlationDefDict=Dict("ndup" => [("n", [1], 1.)], "nddown" => [("n", [2], 1.)]),=#
                                  specFuncDefDict=specFuncDefDict,
-                                 occReq=(x,N)->abs(x-div(N,2)) ≤ 4
+                                 #=occReq=(x,N)->abs(x-div(N,2)) ≤ 4=#
                                 )
     totalSpecFunc = IterSpecFunc(savePaths, specFuncOperators, freqValues, standDev;
-                                       #=occReq=(x,N) -> x == div(N,2),=#
-                                       #=excOccReq=(x,N) -> abs(x - div(N,2)) == 1,=#
-                                       #=symmetrise=true,=#
+                                       occReq=(x,N) -> x == div(N,2),
+                                       excOccReq=(x,N) -> abs(x - div(N,2)) == 1,
                            )
     return totalSpecFunc
 end
@@ -85,72 +85,69 @@ function ExactResults(hamFlow, totalSites::Int64)
     totalSpecFunc = zeros(length(freqValues))
     for (i, num) in enumerate(initSites:addPerStep:totalSites)
         basis = BasisStates(2 * (1 + num); 
-                            localCriteria=x->x[1]+x[2]==1,
+                            #=localCriteria=x->x[1]+x[2]==1,=#
                             totOccReq=[num, 1 + num, 2 + num]
                            )
         fullHam = vcat(hamFlow[1:i]...)
         E, X = Spectrum(fullHam, basis)
-        #=println(length(E))=#
         specFunc = SpecFunc(E, X,
-                            specFuncDefDict,
+                            Dict("create" => specFuncDefDict["create"],
+                                 "destroy" => specFuncDefDict["destroy"]), 
                             freqValues, basis, standDev, 
-                            ['N'], 
-                            (1+num,);
-                            #=symmetrise=true,=#
+                            ['N'], (1+num,)
                            )
-        #=println(i, round.(specFunc, digits=5))=#
         totalSpecFunc .+= specFunc
     end
     return totalSpecFunc
 end
 
-function BenchMark(kondoJ, hop_t)
-    f = Figure(size=(700, 800))
-    axes = [Axis(f[i, 1], xlabel=L"\omega",ylabel=L"A(\omega)") for i in 1:2]
-    errorAxes = [Axis(f[i, 1], width=Relative(0.4), height=Relative(0.4), halign=0.2, valign=0.85, yticklabelsize=20, xticklabelsvisible=false) for i in 1:2]
-    axisIndex = 1
-    for totalSites in [5, 6]
-        for kondoJ in [1., 0.]
-            kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=1e-5)
-            hamFlow = MinceHamiltonian(kondoModel, collect(2 * (1 + initSites):2 * addPerStep:2 * (1 + totalSites)))
-            specFuncIter = IterResults(hamFlow, totalSites)
-            specFuncExact = ExactResults(hamFlow, totalSites)
-            lines!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncIter[freqValues .≥ 0], label=L"ID $J=%$(kondoJ)$")
-            scatter!(axes[axisIndex], freqValues[freqValues .≥ 0], specFuncExact[freqValues .≥ 0], linestyle=:dash, label=L"ED $J=%$(kondoJ)$")
-            relError = abs.(specFuncIter .- specFuncExact) ./ specFuncExact
-            lines!(errorAxes[axisIndex], relError)
-        end
-        axislegend(axes[axisIndex])
-        axisIndex += 1
+function BenchMark(hop_t, hyb, impCorr)
+    f = Figure()
+    ax = Axis(f[1,1], xlabel=L"\omega",ylabel=L"A(\omega)")
+    for totalSites in [5]
+        hamFlow = getHamFlow(initSites, totalSites, hop_t, hyb, impCorr, 1e-5)
+        specFuncIter = IterResults(hamFlow, totalSites)
+        #=println(round.(specFuncIter, digits=10))=#
+        #=println("------------------")=#
+        hamFlow = getHamFlow(initSites, totalSites, hop_t, hyb, impCorr, 1e-5)
+        specFuncExact = ExactResults(hamFlow, totalSites)
+        #=println(round.(specFuncIter, digits=10))=#
+        lines!(ax, freqValues, specFuncIter, label=L"ID $L=%$(totalSites)$")
+        scatter!(ax, freqValues, specFuncExact, linestyle=:dash, label=L"ED $L=%$(totalSites)$")
     end
+    axislegend(ax)
     #=display(f)=#
     save("specFuncComparison.pdf", f)
 end
 
 
-function LargerSystem(kondoJ, hop_t)
+function LargerSystem(hop_t, hyb, impCorr, standDev)
     f = Figure()
-    totalSites = 29
-    ax = Axis(f[1,1], xlabel=L"\omega",ylabel=L"A(\omega)", title=L"\eta=%$(standDev), L=%$(totalSites+1), t=%$(hop_t)", yscale=log10)
-    for kondoJ in [1., 0.5, 0.]
-        kondoModel = KondoModel(totalSites, hop_t, kondoJ, globalField=-1e-5)
-        hamFlow = MinceHamiltonian(kondoModel, collect(2 * (1 + initSites):2 * addPerStep:2 * (1 + totalSites)))
+    ax = Axis(f[1,1], xlabel=L"\omega",ylabel=L"A(\omega)", title=L"\eta=%$(maximum(standDev)),t=%$(hop_t)")#, yscale=log10)
+    totalSites = 21
+    for hyb in [0.1, 0.0001, 10^(-5.2), 10^(-5.3), 0.]
+        hamFlow = getHamFlow(initSites, totalSites, hop_t, hyb, impCorr, -1e-5)
         specFuncIter = IterResults(hamFlow, totalSites)
         specFuncIter ./= sum(specFuncIter .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
-        scatterlines!(ax, freqValues, 1e-5 .+ specFuncIter, label=L"$J=%$(kondoJ)$")
+        scatterlines!(ax, freqValues, 1e-5 .+ specFuncIter, label=L"$V/U=%$(abs(hyb)/impCorr)$")
     end
     axislegend(ax)
-    save("specFunc-Kondo-real.pdf", f)
+    #=display(f)=#
+    save("specFunc-$(maximum(standDev))-gap.pdf", f)
+    #=save("specFunc-$(standDev)-$(hop_t).pdf", f)=#
 end
 
-#=specFuncDefDict = Dict("create" => [("+-+", [1,2,4], 0.5)], "destroy" => [("+--", [2,1,4], 0.5)])=#
-specFuncDefDict = Dict("create" => [("+-+", [2,1,3], 0.5), ("+-+", [1,2,4], 0.5)], "destroy" => [("+--", [1,2,3], 0.5), ("+--", [2,1,4], 0.5)])
+specFuncDefDict = Dict("create" => [("+", [2], 1.), ("+", [1], 1.)], "destroy" => [("-", [2], 1.), ("-", [1], 1.)])
 initSites = 1
 maxSize = 1000
-kondoJ = 0.
-hop_t = 0.001
+hop_t = 0.1
+hyb = 0.1
+impCorr = 4.
 addPerStep = 1
-standDev = 0.01
-freqValues = collect(-2:0.005:2.)
+standDev = ones(length(freqValues))
+standDev[freqValues .>= 0] .= 0.08 # range(0.01, stop=0.1, length=sum(freqValues .>= 0))
+standDev[freqValues .<= 0] .= 0.08 # range(0.1, stop=0.01, length=sum(freqValues .<= 0))
+println((maximum(standDev), minimum(standDev)))
+freqValues = collect(-3:0.01:3)
+LargerSystem(hop_t, hyb, impCorr, standDev)
 #=BenchMark(kondoJ, hop_t)=#
-LargerSystem(kondoJ, hop_t)
