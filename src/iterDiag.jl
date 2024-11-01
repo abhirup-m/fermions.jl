@@ -294,8 +294,8 @@ function IterDiag(
     corrQuantumNoReq::Union{Nothing,Function},
     degenTol::Float64,
     dataDir::String,
-    silent::Bool;
-    specFuncOperators::Dict{String, Vector{Matrix{Float64}}}=Dict{String, Vector{Matrix{Float64}}}(),
+    silent::Bool,
+    specFuncNames::Vector{String},
 )
 
     currentSites = Int64[]
@@ -334,6 +334,21 @@ function IterDiag(
     quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
 
     corrOperatorDict = Dict{String, Union{Nothing, Matrix{Float64}}}(name => nothing for name in keys(correlationDefDict))
+    if !isempty(specFuncNames)
+        specFuncOperators = Dict{String, Vector{Matrix{Float64}}}(name => Matrix{Float64}[] for name in specFuncNames)
+    end
+
+    for (name, correlationDef) in correlationDefDict
+        corrDefKeys = [(type, members) for (type, members, _) in correlationDef]
+        if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), corrDefKeys)
+            corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
+            if name in specFuncNames && isempty(specFuncOperators[name])
+                push!(specFuncOperators[name], corrOperatorDict[name])
+            end
+        end
+    end
+
+
     resultsDict = Dict{String, Union{Nothing, Float64}}(name => nothing for name in keys(correlationDefDict))
     @assert "energyPerSite" ∉ keys(resultsDict)
     resultsDict["energyPerSite"] = nothing
@@ -344,17 +359,6 @@ function IterDiag(
             hamltMatrix += strength * operators[(type, members)]
         end
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
-
-        for (name, correlationDef) in collect(correlationDefDict)
-            if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), [(type, members) for (type, members, _) in correlationDef])
-                corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
-            end
-        end
-        for name in keys(specFuncOperators)
-            if name in keys(corrOperatorDict)
-                push!(specFuncOperators[name], corrOperatorDict[name])
-            end
-        end
 
         if step == length(hamltFlow)
             serialize(savePaths[step], Dict("basis" => rotation,
@@ -416,6 +420,10 @@ function IterDiag(
                                                                                    corrOperatorDict, Tuple{String, Vector{Int64}}[],
                                                                                   )
 
+        for name in filter(name -> !isempty(specFuncOperators[name]), specFuncNames)
+            push!(specFuncOperators[name], corrOperatorDict[name])
+        end
+
         # define the qbit operators for the new sites
         for site in newSitesFlow[step+1] 
             operators[("+", [site])] = kron(bondAntiSymmzer, OperatorMatrix(newBasis, [("+", [site - length(currentSites)], 1.0)]))
@@ -423,6 +431,18 @@ function IterDiag(
         end
 
         operators = CreateProductOperator(create[step+1], operators, newSitesFlow[step+1])
+
+
+        # construct any new correlation operators that became available at this step
+        for (name, correlationDef) in correlationDefDict
+            corrDefKeys = [(type, members) for (type, members, _) in correlationDef]
+            if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), corrDefKeys)
+                corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
+                if name in specFuncNames && isempty(specFuncOperators[name])
+                    push!(specFuncOperators[name], corrOperatorDict[name])
+                end
+            end
+        end
 
         # expand the antisymmetrizer
         bondAntiSymmzer = kron(bondAntiSymmzer, fill(sigmaz, length(newSitesFlow[step+1]))...)
@@ -449,7 +469,7 @@ function IterDiag(
     correlationDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}(),
     vneDefDict::Dict{String, Vector{Int64}}=Dict{String, Vector{Int64}}(),
     mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
-    specFuncDefDict::Dict{String, Tuple{String, Vector{Int64}}}=Dict{String, Tuple{String, Vector{Int64}}}(),
+    specFuncDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}(),
     silent::Bool=false,
 )
 
@@ -505,7 +525,7 @@ function IterDiag(
     specFuncToCorrMap = Dict{String, String}()
     for (name, operator) in specFuncDefDict
         specFuncToCorrMap[name] = randstring(5)
-        correlationDefDict[specFuncToCorrMap[name]] = [(operator..., 1.)]
+        correlationDefDict[specFuncToCorrMap[name]] = operator
     end
 
     for (k, v) in deepcopy(correlationDefDict)
@@ -532,10 +552,14 @@ function IterDiag(
                                       degenTol,
                                       dataDir,
                                       silent,
-                                      specFuncOperators=Dict(name => Matrix{Float64}[] for name in values(specFuncToCorrMap))
+                                      collect(values(specFuncToCorrMap)),
                                      )
 
-    specFuncOperators = Dict(name => specFuncOperators[corrName] for (name, corrName) in specFuncToCorrMap)
+    if isempty(specFuncToCorrMap)
+        specFuncOperators = nothing
+    else
+        specFuncOperators = Dict{String,Vector{Matrix{Float64}}}(name => specFuncOperators[corrName] for (name, corrName) in specFuncToCorrMap)
+    end
 
     for (name, sites) in vneDefDict
         reducedDM = zeros(2^length(sites), 2^length(sites))
@@ -589,7 +613,7 @@ function IterSpecFunc(
         savePaths::Vector{String},
         specFuncOperators::Dict{String, Vector{Matrix{Float64}}},
         freqValues::Vector{Float64},
-        standDev::Float64;
+        standDev::Union{Vector{Float64}, Float64};
         occReq::Union{Nothing,Function}=nothing,
         magzReq::Union{Nothing,Function}=nothing,
         excOccReq::Union{Nothing,Function}=nothing,
@@ -600,27 +624,30 @@ function IterSpecFunc(
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
     totalSpecFunc = zeros(size(freqValues)...)
     
-    broadening(x, standDev) = standDev ./ (x.^2 .+ standDev^2)
-    #=broadening(x, standDev) = exp.(-0.5 .* (x.^2 ./ standDev^2)) ./ (standDev * √(2π))=#
-    for (i, savePath) in collect(enumerate(savePaths[end-length(specFuncOperators["create"]):end-1]))
+    for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators["create"]):end-1])
         specFunc = zeros(size(freqValues)...)
         data = deserialize(savePath)
         basis = [collect(col) for col in eachcol(data["basis"])]
         eigVals = data["eigVals"]
         quantumNos = data["quantumNos"]
         currentSites = data["currentSites"]
-        minimalStates = [basis[quantumNoReq.(quantumNos, length(currentSites))];
-                         basis[excQuantumNoReq.(quantumNos, length(currentSites))];
-                        ]
-        minimalEnergies = [eigVals[quantumNoReq.(quantumNos, length(currentSites))];
-                           eigVals[excQuantumNoReq.(quantumNos, length(currentSites))];
-                          ]
 
-        specFunc = SpecFunc(minimalEnergies, minimalStates, Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)), freqValues, standDev)
+        groundStateEnergy = minimum(eigVals[[quantumNoReq(q, length(currentSites)) for q in quantumNos]])
+        groundStateVector = basis[sortperm(eigVals[[quantumNoReq(q, length(currentSites)) for q in quantumNos]])[1]]
+
+        minimalStates = [groundStateVector]
+        minimalEnergies = [groundStateEnergy]
+        for (index, state) in enumerate(basis) 
+           if !quantumNoReq(quantumNos[index], length(currentSites)) && excQuantumNoReq(quantumNos[index], length(currentSites))
+               push!(minimalStates, state)
+               push!(minimalEnergies, eigVals[index])
+           end
+       end
+
+        specFunc = SpecFunc(minimalEnergies, minimalStates, Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
+                            freqValues, standDev;normalise=true)
         totalSpecFunc .+= specFunc
-        #=println(round.(specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1)), digits=5))=#
     end
-    #=totalSpecFunc ./= sum(totalSpecFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))=#
     return totalSpecFunc
 end
 
