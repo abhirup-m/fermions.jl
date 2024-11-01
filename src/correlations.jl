@@ -271,10 +271,14 @@ function SpecFunc(
     freqValues::Vector{Float64},
     standDev::Union{Vector{Float64}, Float64};
     normalise::Bool=true,
+
     )
+
+    println("E: ", round.(eigVals, digits=5), length(eigVals))
+
     @assert length(eigVals) == length(eigVecs)
 
-    #=println("EM: ", sort(round.(eigVals, digits=5)), length(eigVals))=#
+    @assert issorted(freqValues)
 
     groundState = eigVecs[sortperm(eigVals)[1]]
     energyGs = round(minimum(eigVals), digits=10)
@@ -293,6 +297,7 @@ function SpecFunc(
         specFunc .+= spectralWeights[index][1] * deltaFunction(freqValues .+ energyGs .- eigVals[index], standDev) # standDev ./ ((freqValues .+ energyGs .- eigVals[index]) .^ 2 .+ standDev^2)
         specFunc .+= spectralWeights[index][2] * deltaFunction(freqValues .- energyGs .+ eigVals[index], standDev) # standDev ./ ((freqValues .- energyGs .+ eigVals[index]) .^ 2 .+ standDev^2)
     end
+
     if sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1)) > 1e-10 && normalise
         return specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
     else
@@ -346,6 +351,7 @@ function SpecFunc(
     basisStates::Vector{Dict{BitVector,Float64}},
     standDev::Union{Vector{Float64}, Float64};
     normalise::Bool=true,
+
 )
 
     eigenStates = [ExpandIntoBasis(vector, basisStates) for vector in eigVecs]
@@ -376,8 +382,8 @@ function SpecFunc(
     standDev::Union{Vector{Float64}, Float64},
     symmetries::Vector{Char};
     normalise::Bool=true,
-)
 
+)
     classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
     groundStateEnergy = minimum(eigVals)
     groundState = eigVecs[sortperm(eigVals)[1]]
@@ -411,6 +417,7 @@ function SpecFunc(
     symmetries::Vector{Char},
     groundStateSector::Union{Tuple{Int64}, Tuple{Int64,Int64}};
     normalise::Bool=true,
+
 )
 
     #=println("E: ", round.(eigVals, digits=5))=#
