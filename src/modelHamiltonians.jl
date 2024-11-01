@@ -25,8 +25,8 @@ function KondoModel(
     # global magnetic field (to lift any trivial degeneracy)
     if globalField ≠ 0
         for site in 0:numBathSites
-            push!(hamiltonian, ("n",  [1 + 2 * site], field))
-            push!(hamiltonian, ("n",  [2 + 2 * site], -field))
+            push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
+            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
         end
     end
 

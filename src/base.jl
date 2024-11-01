@@ -361,7 +361,7 @@ function GetSector(
         state::Dict{BitVector, Float64}, 
         symmetries::Vector{Char},
     )
-    bstate = collect(keys(state))[1]
+    bstate = sort(collect(keys(state)), by=k->abs(state[k]))[end]
     totOcc = sum(bstate)
     magz = sum(bstate[1:2:end]) - sum(bstate[2:2:end])
     return ifelse(symmetries == ['N', 'Z'], (totOcc, magz), ifelse(symmetries == ['N'], (totOcc,), (magz,)))
