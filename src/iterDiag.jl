@@ -627,25 +627,30 @@ function IterSpecFunc(
     for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators["create"]):end-1])
         specFunc = zeros(size(freqValues)...)
         data = deserialize(savePath)
-        basis = [collect(col) for col in eachcol(data["basis"])]
+        eigVecs = [collect(col) for col in eachcol(data["basis"])]
         eigVals = data["eigVals"]
         quantumNos = data["quantumNos"]
         currentSites = data["currentSites"]
 
-        groundStateEnergy = minimum(eigVals[[quantumNoReq(q, length(currentSites)) for q in quantumNos]])
-        groundStateVector = basis[sortperm(eigVals[[quantumNoReq(q, length(currentSites)) for q in quantumNos]])[1]]
+        if isnothing(quantumNos)
+            minimalEigVecs = eigVecs
+            minimalEigVals = eigVals
+        else
+            lowEnergyIndices = findall(q -> quantumNoReq(q, length(currentSites)), quantumNos)
+            groundStateEnergy = minimum(eigVals[lowEnergyIndices])
+            groundStateIndex = lowEnergyIndices[sortperm(eigVals[lowEnergyIndices])][1]
+            allowedIndices = [index == groundStateIndex || excQuantumNoReq(q, length(currentSites)) 
+                              for (index, q) in enumerate(quantumNos)]
 
-        minimalStates = [groundStateVector]
-        minimalEnergies = [groundStateEnergy]
-        for (index, state) in enumerate(basis) 
-           if !quantumNoReq(quantumNos[index], length(currentSites)) && excQuantumNoReq(quantumNos[index], length(currentSites))
-               push!(minimalStates, state)
-               push!(minimalEnergies, eigVals[index])
-           end
-       end
+            minimalEigVecs = eigVecs[allowedIndices]
+            minimalEigVals = eigVals[allowedIndices]
+            @assert groundStateEnergy == minimum(minimalEigVals)
+        end
 
-        specFunc = SpecFunc(minimalEnergies, minimalStates, Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
-                            freqValues, standDev;normalise=true)
+        specFunc = SpecFunc(minimalEigVals, minimalEigVecs, 
+                            Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
+                            freqValues, standDev;
+                            normalise=true)
         totalSpecFunc .+= specFunc
     end
     return totalSpecFunc
@@ -715,3 +720,23 @@ function UpdateRequirements(
     return UpdateRequirements(operatorFlow, newSitesFlow)
 end
 export UpdateRequirements
+
+
+function MinceHamiltonian(
+        hamiltonian::Vector{Tuple{String, Vector{Int64}, Float64}},
+        indexPartitions::Vector{Int64},
+    )
+    hamFlow = Vector{Tuple{String, Vector{Int64}, Float64}}[]
+    for lastIndex in indexPartitions
+        currentHam = Tuple{String, Vector{Int64}, Float64}[]
+        for (opType, members, coupling) in hamiltonian
+            if (maximum(members) ≤ lastIndex && 
+                (opType, members, coupling) ∉ vcat(hamFlow...)
+               )
+                push!(currentHam, (opType, members, coupling))
+            end
+        end
+        push!(hamFlow, currentHam)
+    end
+    return hamFlow
+end

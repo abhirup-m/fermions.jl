@@ -274,8 +274,6 @@ function SpecFunc(
 
     )
 
-    println("E: ", round.(eigVals, digits=5), length(eigVals))
-
     @assert length(eigVals) == length(eigVecs)
 
     @assert issorted(freqValues)
@@ -290,7 +288,6 @@ function SpecFunc(
                                   (excitedState' * probes["destroy"] * groundState) * (groundState' * probes["create"] * excitedState)
                                  )
     end
-
     #=deltaFunction(x,standDev) = exp.(-x .^ 2 / (2 * standDev^2)) / standDev=#
     deltaFunction(x,standDev) = standDev ./ (x .^ 2 .+ standDev .^ 2)
     for index in eachindex(eigVals)
@@ -353,9 +350,7 @@ function SpecFunc(
     normalise::Bool=true,
 
 )
-
     eigenStates = [ExpandIntoBasis(vector, basisStates) for vector in eigVecs]
-
     probes = Dict{String,Matrix{Float64}}(name => OperatorMatrix(basisStates, probe) for (name,probe) in probes)
 
     return SpecFunc(eigVals, eigenStates, probes, freqValues, standDev; normalise=normalise)
@@ -389,8 +384,8 @@ function SpecFunc(
     groundState = eigVecs[sortperm(eigVals)[1]]
 
     # calculate sector of excited states
-    minimalEigVecs = Dict{BitVector, Float64}[groundState]
-    minimalEigVals = Float64[groundStateEnergy]
+    minimalEigVecs = [groundState]
+    minimalEigVals = [groundStateEnergy]
     for operator in ["create", "destroy"]
         excitedState = ApplyOperator(probes[operator], groundState)
         if !isempty(excitedState)
@@ -419,21 +414,18 @@ function SpecFunc(
     normalise::Bool=true,
 
 )
-
-    #=println("E: ", round.(eigVals, digits=5))=#
     classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
     groundStateEnergy = minimum(classifiedEnergies[groundStateSector])
 
     groundState = classifiedSpectrum[groundStateSector][sortperm(classifiedEnergies[groundStateSector])[1]]
 
     # calculate sector of excited states
-    minimalEigVecs = Dict{BitVector, Float64}[groundState]
-    minimalEigVals = Float64[groundStateEnergy]
+    minimalEigVecs = [groundState]
+    minimalEigVals = [groundStateEnergy]
     for operator in ["create", "destroy"]
         excitedState = ApplyOperator(probes[operator], groundState)
         if !isempty(excitedState)
             sector = GetSector(excitedState, symmetries)
-            #=println(sector, sort(round.(classifiedEnergies[sector], digits=5)))=#
             append!(minimalEigVecs, classifiedSpectrum[sector])
             append!(minimalEigVals, classifiedEnergies[sector])
         end
