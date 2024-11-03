@@ -644,7 +644,7 @@ function IterSpecFunc(
 
             minimalEigVecs = eigVecs[allowedIndices]
             minimalEigVals = eigVals[allowedIndices]
-            @assert groundStateEnergy == minimum(minimalEigVals)
+            @assert abs(groundStateEnergy - minimum(minimalEigVals)) < 1e-10
         end
 
         specFunc = SpecFunc(minimalEigVals, minimalEigVecs, 
@@ -653,7 +653,12 @@ function IterSpecFunc(
                             normalise=true)
         totalSpecFunc .+= specFunc
     end
-    return totalSpecFunc
+    println(maximum(totalSpecFunc) - minimum(totalSpecFunc))
+    if maximum(totalSpecFunc) - minimum(totalSpecFunc) < 1e-10
+        return  0. * totalSpecFunc
+    else
+        return totalSpecFunc ./ sum(totalSpecFunc * (maximum(freqValues) - minimum(freqValues)) / (length(freqValues) - 1))
+    end
 end
 
 
