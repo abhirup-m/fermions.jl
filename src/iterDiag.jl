@@ -346,6 +346,7 @@ function IterDiag(
     quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
 
     corrOperatorDict = Dict{String, Union{Nothing, Matrix{Float64}}}(name => nothing for name in keys(correlationDefDict))
+    specFuncOperators = nothing
     if !isempty(specFuncNames)
         specFuncOperators = Dict{String, Vector{Matrix{Float64}}}(name => Matrix{Float64}[] for name in specFuncNames)
     end
@@ -354,7 +355,7 @@ function IterDiag(
         corrDefKeys = [(type, members) for (type, members, _) in correlationDef]
         if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), corrDefKeys)
             corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
-            if name in specFuncNames && isempty(specFuncOperators[name])
+            if !isnothing(specFuncOperators) && name in specFuncNames && isempty(specFuncOperators[name])
                 push!(specFuncOperators[name], corrOperatorDict[name])
             end
         end
@@ -432,8 +433,10 @@ function IterDiag(
                                                                                    corrOperatorDict, Tuple{String, Vector{Int64}}[],
                                                                                   )
 
-        for name in filter(name -> !isempty(specFuncOperators[name]), specFuncNames)
-            push!(specFuncOperators[name], corrOperatorDict[name])
+        if !isnothing(specFuncOperators)
+            for name in filter(name -> !isempty(specFuncOperators[name]), specFuncNames)
+                push!(specFuncOperators[name], corrOperatorDict[name])
+            end
         end
 
         # define the qbit operators for the new sites
@@ -450,7 +453,7 @@ function IterDiag(
             corrDefKeys = [(type, members) for (type, members, _) in correlationDef]
             if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), corrDefKeys)
                 corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
-                if name in specFuncNames && isempty(specFuncOperators[name])
+                if !isnothing(specFuncOperators) && name in specFuncNames && isempty(specFuncOperators[name])
                     push!(specFuncOperators[name], corrOperatorDict[name])
                 end
             end
@@ -462,6 +465,7 @@ function IterDiag(
         append!(currentSites, newSitesFlow[step+1])
         next!(pbar; showvalues=[("Size", size(hamltMatrix))])
     end
+    
     return savePaths, resultsDict, specFuncOperators
 end
 export IterDiag
@@ -567,9 +571,7 @@ function IterDiag(
                                       collect(values(specFuncToCorrMap)),
                                      )
 
-    if isempty(specFuncToCorrMap)
-        specFuncOperators = nothing
-    else
+    if !isempty(specFuncToCorrMap)
         specFuncOperators = Dict{String,Vector{Matrix{Float64}}}(name => specFuncOperators[corrName] for (name, corrName) in specFuncToCorrMap)
     end
 
@@ -608,14 +610,14 @@ function IterDiag(
             delete!(resultsDict, name)
         end
     end
-    if isempty(vneDefDict) && isempty(mutInfoDefDict) && isempty(specFuncOperators)
+    if isempty(vneDefDict) && isempty(mutInfoDefDict) && isnothing(specFuncOperators)
         return savePaths, resultsDict
-    elseif !(isempty(vneDefDict) && isempty(mutInfoDefDict)) && isempty(specFuncOperators)
+    elseif (!isempty(vneDefDict) || !isempty(mutInfoDefDict)) && isnothing(specFuncOperators)
         return savePaths, resultsDict, exitCode
-    elseif isempty(vneDefDict) && isempty(mutInfoDefDict) && !isempty(specFuncOperators)
+    elseif isempty(vneDefDict) && isempty(mutInfoDefDict) && !isnothing(specFuncOperators)
         return savePaths, resultsDict, specFuncOperators
-    else
-        return savePaths, resultsDict, exitCode
+    elseif (!isempty(vneDefDict) || !isempty(mutInfoDefDict)) && !isnothing(specFuncOperators)
+        return savePaths, resultsDict, exitCode, specFuncOperators
     end
 end
 export IterDiag
