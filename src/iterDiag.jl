@@ -198,6 +198,9 @@ function TruncateSpectrum(
     )
     if isnothing(corrQuantumNoReq)
         # ensure we aren't truncating in the middle of degenerate states
+        if eigVals[maxSize + 1] / eigVals[maxSize] > 1 + degenTol
+            maxSize = minimum((findlast(≤(eigVals[maxSize] * (1 + degenTol)), eigVals), 2 * maxSize))
+        end
         rotation = rotation[:, 1:maxSize]
         if !isnothing(quantumNos)
             quantumNos = quantumNos[1:maxSize]
@@ -207,8 +210,17 @@ function TruncateSpectrum(
         retainBasisVectors = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
         otherBasisVectors = findall(q -> !corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
         if length(retainBasisVectors) < maxSize
+            remnantSize = maxSize - length(retainBasisVectors)
+            if eigVals[otherBasisVectors[remnantSize] + 1] / eigVals[otherBasisVectors[remnantSize]] > 1 + degenTol
+                remnantSize = minimum((findlast(≤(eigVals[otherBasisVectors[remnantSize]] * (1 + degenTol)), eigVals), 
+                                       2 * maxSize - length(retainBasisVectors))
+                                     )
+            end
             append!(retainBasisVectors, otherBasisVectors[1:(maxSize - length(retainBasisVectors))])
         else
+            if eigVals[retainBasisVectors[maxSize] + 1] / eigVals[retainBasisVectors[maxSize]] > 1 + degenTol
+                maxSize = minimum((findlast(≤(eigVals[retainBasisVectors[maxSize]] * (1 + degenTol)), eigVals), 2 * maxSize))
+            end
             retainBasisVectors = retainBasisVectors[1:maxSize]
         end
 
