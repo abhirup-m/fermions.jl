@@ -78,3 +78,29 @@ function KondoModel(
     return hamiltonian
 end
 export KondoModel
+
+
+function KondoModel(
+        dispersion::Vector{Float64},
+        kondoJ::Float64,
+        bathInt::Float64;
+        intLegs::Int64=4,
+        globalField::Float64=0.,
+        cavityIndices::Vector{Int64},
+    )
+    numBathSites = length(dispersion)
+    hamiltonian = KondoModel(dispersion, kondoJ, globalField=globalField, cavityIndices=cavityIndices)
+    for indices in Iterators.product([1:numBathSites for _ in 1:4]...)
+        if length(unique(indices)) > intLegs
+            continue
+        end
+        up1, up2, up3, up4 = 2 .* indices .+ 1
+        down1, down2, down3, down4 = (up1, up2, up3, up4) .+ 1
+        push!(hamiltonian, ("+-+-",  [up1, up2, up3, up4], -bathInt / 2)) # 
+        push!(hamiltonian, ("+-+-",  [down1, down2, down3, down4], -bathInt / 2)) # 
+        push!(hamiltonian, ("+-+-",  [up1, up2, down3, down4], bathInt / 2)) # 
+        push!(hamiltonian, ("+-+-",  [down1, down2, up3, up4], bathInt / 2)) # 
+    end
+    return hamiltonian
+end
+export KondoModel
