@@ -270,6 +270,7 @@ function SpecFunc(
     probes::Dict{String,Matrix{Float64}},
     freqValues::Vector{Float64},
     standDev::Union{Vector{Float64}, Float64};
+    degenTol::Float64=0.,
     normalise::Bool=true,
 
     )
@@ -278,21 +279,23 @@ function SpecFunc(
 
     @assert issorted(freqValues)
 
-    groundState = eigVecs[sortperm(eigVals)[1]]
-    energyGs = round(minimum(eigVals), digits=10)
+    energyGs = minimum(eigVals)
     specFunc = 0 .* freqValues
-    spectralWeights = [(0.,0.) for _ in eigVecs]
-    @showprogress Threads.@threads for index in eachindex(eigVecs)
-        excitedState = eigVecs[index]
-        spectralWeights[index] = ((groundState' * probes["destroy"] * excitedState) * (excitedState' * probes["create"] * groundState), 
-                                  (excitedState' * probes["destroy"] * groundState) * (groundState' * probes["create"] * excitedState)
-                                 )
-    end
-    #=deltaFunction(x,standDev) = exp.(-x .^ 2 / (2 * standDev^2)) / standDev=#
-    deltaFunction(x,standDev) = standDev ./ (x .^ 2 .+ standDev .^ 2)
-    for index in eachindex(eigVals)
-        specFunc .+= spectralWeights[index][1] * deltaFunction(freqValues .+ energyGs .- eigVals[index], standDev) # standDev ./ ((freqValues .+ energyGs .- eigVals[index]) .^ 2 .+ standDev^2)
-        specFunc .+= spectralWeights[index][2] * deltaFunction(freqValues .- energyGs .+ eigVals[index], standDev) # standDev ./ ((freqValues .- energyGs .+ eigVals[index]) .^ 2 .+ standDev^2)
+
+    for groundState in eigVecs[eigVals .≤ energyGs  + abs(energyGs) * degenTol]
+        spectralWeights = [(0.,0.) for _ in eigVecs]
+        @showprogress Threads.@threads for index in eachindex(eigVecs)
+            excitedState = eigVecs[index]
+            spectralWeights[index] = ((groundState' * probes["destroy"] * excitedState) * (excitedState' * probes["create"] * groundState), 
+                                      (excitedState' * probes["destroy"] * groundState) * (groundState' * probes["create"] * excitedState)
+                                     )
+        end
+        #=deltaFunction(x,standDev) = exp.(-x .^ 2 / (2 * standDev^2)) / standDev=#
+        deltaFunction(x,standDev) = standDev ./ (x .^ 2 .+ standDev .^ 2)
+        for index in eachindex(eigVals)
+            specFunc .+= spectralWeights[index][1] * deltaFunction(freqValues .+ energyGs .- eigVals[index], standDev) # standDev ./ ((freqValues .+ energyGs .- eigVals[index]) .^ 2 .+ standDev^2)
+            specFunc .+= spectralWeights[index][2] * deltaFunction(freqValues .- energyGs .+ eigVals[index], standDev) # standDev ./ ((freqValues .- energyGs .+ eigVals[index]) .^ 2 .+ standDev^2)
+        end
     end
 
     if sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1)) > 1e-10 && normalise
@@ -347,13 +350,15 @@ function SpecFunc(
     freqValues::Vector{Float64},
     basisStates::Vector{Dict{BitVector,Float64}},
     standDev::Union{Vector{Float64}, Float64};
+    degenTol::Float64=0.,
     normalise::Bool=true,
 
 )
     eigenStates = [ExpandIntoBasis(vector, basisStates) for vector in eigVecs]
     probes = Dict{String,Matrix{Float64}}(name => OperatorMatrix(basisStates, probe) for (name,probe) in probes)
 
-    return SpecFunc(eigVals, eigenStates, probes, freqValues, standDev; normalise=normalise)
+    return SpecFunc(eigVals, eigenStates, probes, freqValues, standDev;
+                    normalise=normalise, degenTol=degenTol)
 end
 export SpecFunc
 
@@ -376,28 +381,34 @@ function SpecFunc(
     basisStates::Vector{Dict{BitVector,Float64}},
     standDev::Union{Vector{Float64}, Float64},
     symmetries::Vector{Char};
+    degenTol::Float64=0.,
     normalise::Bool=true,
 
 )
     classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
     groundStateEnergy = minimum(eigVals)
+    minimalEigVecs = Dict{BitVector,Float64}[]
+    minimalEigVals = Float64[]
     groundState = eigVecs[sortperm(eigVals)[1]]
+    for groundState in eigVecs[eigVals .≤ groundStateEnergy  + abs(groundStateEnergy) * degenTol]
+        push!(minimalEigVals, groundStateEnergy)
+        push!(minimalEigVecs, groundState)
 
-    # calculate sector of excited states
-    minimalEigVecs = [groundState]
-    minimalEigVals = [groundStateEnergy]
-    for operator in ["create", "destroy"]
-        excitedState = ApplyOperator(probes[operator], groundState)
-        if !isempty(excitedState)
-            sector = GetSector(excitedState, symmetries)
-            append!(minimalEigVecs, classifiedSpectrum[sector])
-            append!(minimalEigVals, classifiedEnergies[sector])
+        # calculate sector of excited states
+        for operator in ["create", "destroy"]
+            excitedState = ApplyOperator(probes[operator], groundState)
+            if !isempty(excitedState)
+                sector = GetSector(excitedState, symmetries)
+                append!(minimalEigVecs, classifiedSpectrum[sector])
+                append!(minimalEigVals, classifiedEnergies[sector])
+            end
         end
     end
 
     @assert groundStateEnergy == minimum(minimalEigVals)
 
-    return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev; normalise=normalise)
+    return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev;
+                    normalise=normalise, degenTol=degenTol)
 end
 export SpecFunc
 
@@ -411,29 +422,36 @@ function SpecFunc(
     standDev::Union{Vector{Float64}, Float64},
     symmetries::Vector{Char},
     groundStateSector::Union{Tuple{Int64}, Tuple{Int64,Int64}};
+    degenTol::Float64=0.,
     normalise::Bool=true,
 
 )
     classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
+    minimalEigVecs = Dict{BitVector,Float64}[]
+    minimalEigVals = Float64[]
+
     groundStateEnergy = minimum(classifiedEnergies[groundStateSector])
 
-    groundState = classifiedSpectrum[groundStateSector][sortperm(classifiedEnergies[groundStateSector])[1]]
+    groundStateCandidates = classifiedSpectrum[groundStateSector] #[sortperm(classifiedEnergies[groundStateSector])[1]]
+    for groundState in groundStateCandidates[classifiedEnergies[groundStateSector] .≤ groundStateEnergy  + abs(groundStateEnergy) * degenTol]
 
-    # calculate sector of excited states
-    minimalEigVecs = [groundState]
-    minimalEigVals = [groundStateEnergy]
-    for operator in ["create", "destroy"]
-        excitedState = ApplyOperator(probes[operator], groundState)
-        if !isempty(excitedState)
-            sector = GetSector(excitedState, symmetries)
-            append!(minimalEigVecs, classifiedSpectrum[sector])
-            append!(minimalEigVals, classifiedEnergies[sector])
+        # calculate sector of excited states
+        push!(minimalEigVals, groundStateEnergy)
+        push!(minimalEigVecs, groundState)
+        for operator in ["create", "destroy"]
+            excitedState = ApplyOperator(probes[operator], groundState)
+            if !isempty(excitedState)
+                sector = GetSector(excitedState, symmetries)
+                append!(minimalEigVecs, classifiedSpectrum[sector])
+                append!(minimalEigVals, classifiedEnergies[sector])
+            end
         end
     end
 
     @assert groundStateEnergy == minimum(minimalEigVals)
 
-    return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev; normalise=normalise)
+    return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev;
+                    normalise=normalise, degenTol=degenTol)
 end
 export SpecFunc
 
@@ -450,10 +468,12 @@ function SpecFunc(
     probes::Dict{String,Matrix{Float64}},
     freqValues::Vector{Float64},
     standDev::Union{Vector{Float64}, Float64};
+    degenTol::Float64=0.,
     normalise::Bool=true,
 )
 
     eigVecs = [collect(vec) for vec in eachcol(eigVecMatrix)]
-    return SpecFunc(eigVals, eigVecs, probes, freqValues, standDev; normalise=normalise)
+    return SpecFunc(eigVals, eigVecs, probes, freqValues, standDev; 
+                    normalise=normalise, degenTol=degenTol)
 end
 export SpecFunc
