@@ -39,13 +39,13 @@ function KondoModel(
         dispersion::Vector{Float64},
         kondoJ::Float64;
         globalField::Float64=0.,
-        cavityIndices::Vector{Int64},
+        cavityIndices::Vector{Int64}=Int64[],
     )
     numBathSites = length(dispersion)
     hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
 
     # kinetic energy
-    for site in 1:(numBathSites-1)
+    for site in 1:numBathSites
         push!(hamiltonian, ("n",  [1 + 2 * site], dispersion[site])) # up spin
         push!(hamiltonian, ("n",  [2 + 2 * site], dispersion[site])) # down spin
     end

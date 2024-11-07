@@ -272,37 +272,40 @@ function SpecFunc(
     standDev::Union{Vector{Float64}, Float64};
     degenTol::Float64=0.,
     normalise::Bool=true,
-
     )
 
     @assert length(eigVals) == length(eigVecs)
 
     @assert issorted(freqValues)
 
+    broadeningFunc(x, standDev) = standDev ./ (x .^ 2 .+ standDev .^ 2)
+
     energyGs = minimum(eigVals)
     specFunc = 0 .* freqValues
 
-    for groundState in eigVecs[eigVals .≤ energyGs  + abs(energyGs) * degenTol]
-        spectralWeights = [(0.,0.) for _ in eigVecs]
-        @showprogress Threads.@threads for index in eachindex(eigVecs)
-            excitedState = eigVecs[index]
-            spectralWeights[index] = ((groundState' * probes["destroy"] * excitedState) * (excitedState' * probes["create"] * groundState), 
-                                      (excitedState' * probes["destroy"] * groundState) * (groundState' * probes["create"] * excitedState)
-                                     )
-        end
-        #=deltaFunction(x,standDev) = exp.(-x .^ 2 / (2 * standDev^2)) / standDev=#
-        deltaFunction(x,standDev) = standDev ./ (x .^ 2 .+ standDev .^ 2)
-        for index in eachindex(eigVals)
-            specFunc .+= spectralWeights[index][1] * deltaFunction(freqValues .+ energyGs .- eigVals[index], standDev) # standDev ./ ((freqValues .+ energyGs .- eigVals[index]) .^ 2 .+ standDev^2)
-            specFunc .+= spectralWeights[index][2] * deltaFunction(freqValues .- energyGs .+ eigVals[index], standDev) # standDev ./ ((freqValues .- energyGs .+ eigVals[index]) .^ 2 .+ standDev^2)
-        end
-    end
+    degenerateManifold = eigVals .≤ energyGs + degenTol
+    println("Degeneracy = ", length(eigVals[degenerateManifold]), "; Range=[$(eigVals[degenerateManifold][1]), $(eigVals[degenerateManifold][end])]")
 
-    if sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1)) > 1e-10 && normalise
-        return specFunc ./ sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
-    else
-        return specFunc
+    @time @showprogress for groundState in eigVecs[degenerateManifold]
+        excitationCreate = probes["create"] * groundState
+        excitationDestroy = probes["destroy"] * groundState
+        excitationCreateBra = groundState' * probes["create"]
+        excitationDestroyBra = groundState' * probes["destroy"]
+        for index in eachindex(eigVals)
+            excitedState = eigVecs[index]
+            spectralWeights = [(excitationDestroyBra * excitedState) * (excitedState' * excitationCreate),
+                               (excitedState' * excitationDestroy) * (excitationCreateBra * excitedState)
+                              ]
+            specFunc .+= spectralWeights[1] * broadeningFunc(freqValues .+ energyGs .- eigVals[index], standDev)
+            specFunc .+= spectralWeights[2] * broadeningFunc(freqValues .- energyGs .+ eigVals[index], standDev)
+        end
     end
+    areaSpecFunc = sum(specFunc .* (maximum(freqValues) - minimum(freqValues[1])) / (length(freqValues) - 1))
+    if areaSpecFunc > 1e-10 && normalise
+        specFunc = specFunc ./ areaSpecFunc
+    end
+    return specFunc
+
 end
 export SpecFunc
 
@@ -354,10 +357,16 @@ function SpecFunc(
     normalise::Bool=true,
 
 )
-    eigenStates = [ExpandIntoBasis(vector, basisStates) for vector in eigVecs]
-    probes = Dict{String,Matrix{Float64}}(name => OperatorMatrix(basisStates, probe) for (name,probe) in probes)
+    eigenStates = Vector{Float64}[] 
+    for vector in eigVecs
+        push!(eigenStates, ExpandIntoBasis(vector, basisStates))
+    end
+    probeMatrices = Dict{String,Matrix{Float64}}(name => zeros(length(basisStates), length(basisStates)) for name in keys(probes))
+    for (name,probe) in collect(probes)
+        probeMatrices[name] = OperatorMatrix(basisStates, probe)
+    end
 
-    return SpecFunc(eigVals, eigenStates, probes, freqValues, standDev;
+    return SpecFunc(eigVals, eigenStates, probeMatrices, freqValues, standDev;
                     normalise=normalise, degenTol=degenTol)
 end
 export SpecFunc
