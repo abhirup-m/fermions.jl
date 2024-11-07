@@ -187,6 +187,17 @@ function Diagonalise(
 end
 
 
+function BlurredMaxSize(
+        maxSize::Int64,
+        values::Vector{Float64},
+        degenTol::Float64,
+    )
+    blurredCutoff = values[maxSize] + degenTol
+    blurredMaxSize = findlast(≤(blurredCutoff), values)
+    return minimum((2 * maxSize, blurredMaxSize))
+end
+
+
 function TruncateSpectrum(
         corrQuantumNoReq::Union{Nothing,Function},
         rotation::Matrix{Float64},
@@ -197,36 +208,31 @@ function TruncateSpectrum(
         quantumNos::Union{Nothing,Vector{NTuple{1, Int64}},Vector{NTuple{2, Int64}}}, 
     )
     if isnothing(corrQuantumNoReq)
+        
         # ensure we aren't truncating in the middle of degenerate states
-        if eigVals[maxSize + 1] / eigVals[maxSize] > 1 + degenTol
-            maxSize = minimum((findlast(≤(eigVals[maxSize] * (1 + degenTol)), eigVals), 2 * maxSize))
-        end
+        maxSize = BlurredMaxSize(maxSize, eigVals, degenTol)
         rotation = rotation[:, 1:maxSize]
         if !isnothing(quantumNos)
             quantumNos = quantumNos[1:maxSize]
         end
         eigVals = eigVals[1:maxSize]
     else
-        retainBasisVectors = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
-        otherBasisVectors = findall(q -> !corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
-        if length(retainBasisVectors) < maxSize
-            remnantSize = maxSize - length(retainBasisVectors)
-            if eigVals[otherBasisVectors[remnantSize] + 1] / eigVals[otherBasisVectors[remnantSize]] > 1 + degenTol
-                remnantSize = minimum((findlast(≤(eigVals[otherBasisVectors[remnantSize]] * (1 + degenTol)), eigVals), 
-                                       2 * maxSize - length(retainBasisVectors))
-                                     )
-            end
-            append!(retainBasisVectors, otherBasisVectors[1:(maxSize - length(retainBasisVectors))])
+        retainIndices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
+        otherIndices = findall(q -> !corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
+        if length(retainIndices) < maxSize
+            maxSizeRemain = maxSize - length(retainIndices)
+            cutOffEnergy = eigVals[otherIndices][maxSizeRemain] + degenTol
+            filter!(i -> eigVals[i] ≤ cutOffEnergy, otherIndices)
+
+            append!(retainIndices, otherIndices)
         else
-            if eigVals[retainBasisVectors[maxSize] + 1] / eigVals[retainBasisVectors[maxSize]] > 1 + degenTol
-                maxSize = minimum((findlast(≤(eigVals[retainBasisVectors[maxSize]] * (1 + degenTol)), eigVals), 2 * maxSize))
-            end
-            retainBasisVectors = retainBasisVectors[1:maxSize]
+            cutOffEnergy = eigVals[retainIndices][maxSize] + degenTol
+            filter!(i -> eigVals[i] ≤ cutOffEnergy, retainIndices)
         end
 
-        rotation = rotation[:, retainBasisVectors]
-        quantumNos = quantumNos[retainBasisVectors]
-        eigVals = eigVals[retainBasisVectors]
+        rotation = rotation[:, retainIndices]
+        quantumNos = quantumNos[retainIndices]
+        eigVals = eigVals[retainIndices]
     end
     return rotation, eigVals, quantumNos
 end
@@ -372,6 +378,7 @@ function IterDiag(
             hamltMatrix += strength * operators[(type, members)]
         end
         eigVals, rotation, quantumNos = Diagonalise(hamltMatrix, quantumNos)
+
 
         if step == length(hamltFlow)
             serialize(savePaths[step], Dict("basis" => rotation,
@@ -628,6 +635,7 @@ function IterSpecFunc(
         specFuncOperators::Dict{String, Vector{Matrix{Float64}}},
         freqValues::Vector{Float64},
         standDev::Union{Vector{Float64}, Float64};
+        degenTol::Float64=0.,
         occReq::Union{Nothing,Function}=nothing,
         magzReq::Union{Nothing,Function}=nothing,
         excOccReq::Union{Nothing,Function}=nothing,
@@ -652,9 +660,9 @@ function IterSpecFunc(
         else
             lowEnergyIndices = findall(q -> quantumNoReq(q, length(currentSites)), quantumNos)
             groundStateEnergy = minimum(eigVals[lowEnergyIndices])
-            groundStateIndex = lowEnergyIndices[sortperm(eigVals[lowEnergyIndices])][1]
-            allowedIndices = [index == groundStateIndex || excQuantumNoReq(q, length(currentSites)) 
-                              for (index, q) in enumerate(quantumNos)]
+            filter!(i -> eigVals[i] ≤ groundStateEnergy + degenTol, lowEnergyIndices)
+            excitedIndices = findall(q -> excQuantumNoReq(q, length(currentSites)), quantumNos)
+            allowedIndices = [lowEnergyIndices; excitedIndices]
 
             minimalEigVecs = eigVecs[allowedIndices]
             minimalEigVals = eigVals[allowedIndices]
@@ -664,10 +672,9 @@ function IterSpecFunc(
         specFunc = SpecFunc(minimalEigVals, minimalEigVecs, 
                             Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
                             freqValues, standDev;
-                            normalise=true)
+                            normalise=true, degenTol=degenTol)
         totalSpecFunc .+= specFunc
     end
-    println(maximum(totalSpecFunc) - minimum(totalSpecFunc))
     if maximum(totalSpecFunc) - minimum(totalSpecFunc) < 1e-10
         return  0. * totalSpecFunc
     else
