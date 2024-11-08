@@ -54,8 +54,12 @@ function KondoModel(
     for indices in Iterators.product(1:numBathSites, 1:numBathSites)
         if any(∈(cavityIndices), indices)
             kondoJ_indices = 0
+            continue
         else
             kondoJ_indices = kondoJ
+        end
+        if abs(kondoJ) < 1e-15
+            continue
         end
         up1, up2 = 2 .* indices .+ 1
         down1, down2 = (up1, up2) .+ 1
@@ -104,3 +108,53 @@ function KondoModel(
     return hamiltonian
 end
 export KondoModel
+
+
+function Dispersion(
+        numStates::Int64, 
+        lowerCutOff::Float64,
+        upperCutoff::Float64,
+        discretisation::String;
+        phSymmetry::Bool=true,
+    )
+
+    @assert abs(lowerCutOff) ≤ abs(upperCutoff)
+    @assert discretisation == "log" || discretisation == "lin"
+    if discretisation == "log"
+        @assert lowerCutOff > 0
+    end
+
+    dispersion = zeros(numStates)
+    if discretisation == "log"
+        if phSymmetry
+            if numStates % 2 == 0
+                dispersion[1:2:end] .= 10. .^ range(log10(lowerCutOff), stop=log10(upperCutoff), length=div(numStates, 2))
+                dispersion[2:2:end] .= -1 .* dispersion[1:2:end]
+            else
+                dispersion[3:2:end] .= 10. .^ range(log10(lowerCutOff), stop=log10(upperCutoff), length=div(numStates - 1, 2))
+                dispersion[2:2:end] .= -1 .* dispersion[3:2:end]
+            end
+        else
+            if numStates % 2 == 0
+                dispersion .= 10. .^ range(log10(lowerCutOff), stop=log10(upperCutoff), length=numStates)
+            else
+                dispersion[2:end] .= 10. .^ range(log10(lowerCutOff), stop=log10(upperCutoff), length=numStates-1)
+            end
+        end
+    else
+        if phSymmetry
+            if numStates % 2 == 0
+                dispersion[1:2:end] = range(abs(lowerCutOff), stop=abs(upperCutoff), length=div(numStates, 2)) 
+                dispersion[2:2:end] .= -1 .* dispersion[1:2:end]
+            else
+                @assert dispersion[1] == 0
+                dispersion[1:2:end] = range(abs(lowerCutOff), stop=abs(upperCutoff), length=div(numStates+1, 2)) 
+                dispersion[2:2:end] .= -1 .* dispersion[3:2:end]
+            end
+        else
+            dispersion = collect(range(abs(lowerCutOff), stop=abs(upperCutoff), length=numStates))
+        end
+    end
+    return dispersion
+end
+export Dispersion
