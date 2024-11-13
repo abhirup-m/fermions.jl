@@ -110,7 +110,7 @@ end
 export KondoModel
 
 
-function siamKSpace(
+function SiamKSpace(
         dispersion::Vector{Float64},
         hybridisation::Float64,
         impOnsite::Float64,
@@ -157,7 +157,47 @@ function siamKSpace(
 
     return hamiltonian
 end
-export siamKSpace
+export SiamKSpace
+
+
+function SiamKondoKSpace(
+        dispersion::Vector{Float64},
+        hybridisation::Float64,
+        kondoJ::Float64,
+        impOnsite::Float64,
+        impCorr::Float64;
+        globalField::Float64=0.,
+        cavityIndices::Vector{Int64}=Int64[],
+    )
+    hamiltonian = SiamKSpace(dispersion, hybridisation, impOnsite, impCorr; globalField=globalField, cavityIndices=cavityIndices)
+
+    numBathSites = length(dispersion)
+    # kondo terms
+    for indices in Iterators.product(1:numBathSites, 1:numBathSites)
+        if any(∈(cavityIndices), indices)
+            kondoJ_indices = 0
+            continue
+        else
+            kondoJ_indices = kondoJ
+        end
+        if abs(kondoJ) < 1e-15
+            continue
+        end
+        up1, up2 = 2 .* indices .+ 1
+        down1, down2 = (up1, up2) .+ 1
+        push!(hamiltonian, ("n+-",  [1, up1, up2], kondoJ_indices / 4)) # n_{d up, n_{0 up}
+        push!(hamiltonian, ("n+-",  [1, down1, down2], -kondoJ_indices / 4)) # n_{d up, n_{0 down}
+        push!(hamiltonian, ("n+-",  [2, up1, up2], -kondoJ_indices / 4)) # n_{d down, n_{0 up}
+        push!(hamiltonian, ("n+-",  [2, down1, down2], kondoJ_indices / 4)) # n_{d down, n_{0 down}
+        push!(hamiltonian, ("+-+-",  [1, 2, down1, up2], kondoJ_indices / 2)) # S_d^+ S_0^-
+        push!(hamiltonian, ("+-+-",  [2, 1, up1, down2], kondoJ_indices / 2)) # S_d^- S_0^+
+    end
+    return hamiltonian
+
+    
+end
+export SiamKondoKSpace
+
 
 function Dispersion(
         numStates::Int64, 
