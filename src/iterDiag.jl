@@ -352,21 +352,23 @@ function IterDiag(
     quantumNos = InitiateQuantumNos(currentSites, symmetries, initBasis)
 
     corrOperatorDict = Dict{String, Union{Nothing, Matrix{Float64}}}(name => nothing for name in keys(correlationDefDict))
-    specFuncOperators = nothing
-    if !isempty(specFuncNames)
-        specFuncOperators = Dict{String, Vector{Matrix{Float64}}}(name => Matrix{Float64}[] for name in specFuncNames)
-    end
 
     for (name, correlationDef) in correlationDefDict
         corrDefKeys = [(type, members) for (type, members, _) in correlationDef]
         if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), corrDefKeys)
             corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
-            if !isnothing(specFuncOperators) && name in specFuncNames && isempty(specFuncOperators[name])
-                push!(specFuncOperators[name], corrOperatorDict[name])
-            end
         end
     end
 
+    specFuncOperators = nothing
+    if !isempty(specFuncNames)
+        specFuncOperators = Dict{String, Vector{Matrix{Float64}}}(name => Matrix{Float64}[] for name in specFuncNames)
+    end
+    if !isempty(specFuncNames) && all(name -> !isnothing(corrOperatorDict[name]), specFuncNames)
+        for name in filter(name -> !isnothing(corrOperatorDict[name]), specFuncNames)
+            push!(specFuncOperators[name], corrOperatorDict[name])
+        end
+    end
 
     resultsDict = Dict{String, Union{Nothing, Float64}}(name => nothing for name in keys(correlationDefDict))
     @assert "energyPerSite" ∉ keys(resultsDict)
@@ -440,11 +442,11 @@ function IterDiag(
                                                                                    corrOperatorDict, Tuple{String, Vector{Int64}}[],
                                                                                   )
 
-        if !isnothing(specFuncOperators)
-            for name in filter(name -> !isempty(specFuncOperators[name]), specFuncNames)
-                push!(specFuncOperators[name], corrOperatorDict[name])
-            end
-        end
+        #=if !isnothing(specFuncOperators)=#
+        #=    for name in filter(name -> !isempty(specFuncOperators[name]), specFuncNames)=#
+        #=        push!(specFuncOperators[name], corrOperatorDict[name])=#
+        #=    end=#
+        #=end=#
 
         # define the qbit operators for the new sites
         for site in newSitesFlow[step+1] 
@@ -460,9 +462,12 @@ function IterDiag(
             corrDefKeys = [(type, members) for (type, members, _) in correlationDef]
             if isnothing(corrOperatorDict[name]) && all(∈(keys(operators)), corrDefKeys)
                 corrOperatorDict[name] = sum([coupling * operators[(type, members)] for (type, members, coupling) in correlationDef])
-                if !isnothing(specFuncOperators) && name in specFuncNames && isempty(specFuncOperators[name])
-                    push!(specFuncOperators[name], corrOperatorDict[name])
-                end
+            end
+        end
+
+        if !isempty(specFuncNames) && all(name -> !isnothing(corrOperatorDict[name]), specFuncNames)
+            for name in specFuncNames
+                push!(specFuncOperators[name], corrOperatorDict[name])
             end
         end
 
@@ -483,7 +488,6 @@ function IterDiag(
     maxSize::Int64;
     occReq::Union{Nothing,Function}=nothing,#(o,N)->ifelse(div(N,2)-2 ≤ o ≤ div(N,2)+2, true, false), ## close to half-filling
     magzReq::Union{Nothing,Function}=nothing,#(m,N)->ifelse(m == N, true, false), ## maximally polarised states
-    localCriteria::Union{Nothing,Function}=nothing,#x->x[1] + x[2] == 1, ## impurity occupancy 1
     corrOccReq::Union{Nothing,Function}=nothing,
     corrMagzReq::Union{Nothing,Function}=nothing,
     symmetries::Vector{Char}=Char[],
@@ -569,14 +573,14 @@ function IterDiag(
 
 
     savePaths, resultsDict, specFuncOperators = IterDiag(hamltFlow, maxSize, symmetries,
-                                      correlationDefDict,
-                                      quantumNoReq, 
-                                      corrQuantumNoReq,
-                                      degenTol,
-                                      dataDir,
-                                      silent,
-                                      collect(values(specFuncToCorrMap)),
-                                     )
+                                                         correlationDefDict,
+                                                         quantumNoReq, 
+                                                         corrQuantumNoReq,
+                                                         degenTol,
+                                                         dataDir,
+                                                         silent,
+                                                         collect(values(specFuncToCorrMap)),
+                                                        )
 
     if !isempty(specFuncToCorrMap)
         specFuncOperators = Dict{String,Vector{Matrix{Float64}}}(name => specFuncOperators[corrName] for (name, corrName) in specFuncToCorrMap)
@@ -645,8 +649,10 @@ function IterSpecFunc(
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
     totalSpecFunc = zeros(size(freqValues)...)
+    println(length(specFuncOperators["destroy"]))
     
     for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators["create"]):end-1])
+    #=for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators["create"]):end-1])=#
         specFunc = zeros(size(freqValues)...)
         data = deserialize(savePath)
         eigVecs = [collect(col) for col in eachcol(data["basis"])]
@@ -654,6 +660,7 @@ function IterSpecFunc(
         quantumNos = data["quantumNos"]
         currentSites = data["currentSites"]
 
+        println(quantumNos[sortperm(eigVals)[1]])
         if isnothing(quantumNos)
             minimalEigVecs = eigVecs
             minimalEigVals = eigVals
@@ -673,13 +680,16 @@ function IterSpecFunc(
                             Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
                             freqValues, standDev;
                             normalise=true, degenTol=degenTol)
+        println(i, (maximum(specFunc), minimum(specFunc)))
         totalSpecFunc .+= specFunc
     end
-    if maximum(totalSpecFunc) - minimum(totalSpecFunc) < 1e-10
-        return  0. * totalSpecFunc
-    else
-        return totalSpecFunc ./ sum(totalSpecFunc * (maximum(freqValues) - minimum(freqValues)) / (length(freqValues) - 1))
-    end
+    println(sum(totalSpecFunc * (maximum(freqValues) - minimum(freqValues)) / (length(freqValues) - 1)))
+    return totalSpecFunc
+    #=if sum(totalSpecFunc * (maximum(freqValues) - minimum(freqValues)) / (length(freqValues) - 1)) < 1e-2=#
+    #=    return  0. * totalSpecFunc=#
+    #=else=#
+    #=    return totalSpecFunc ./ sum(totalSpecFunc * (maximum(freqValues) - minimum(freqValues)) / (length(freqValues) - 1))=#
+    #=end=#
 end
 
 
