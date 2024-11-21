@@ -270,7 +270,6 @@ function UpdateOldOperators(
         rotation::Matrix{Float64}, 
         bondAntiSymmzer::Matrix{Float64},
         corrOperatorDict::Dict{String, Union{Nothing, Matrix{Float64}}},
-        vneOperators::Vector{Tuple{String, Vector{Int64}}},
     )
 
     # expanded diagonal hamiltonian
@@ -278,17 +277,15 @@ function UpdateOldOperators(
 
     # rotate and enlarge qubit operators of current system
     for k in setdiff(keys(operators), newBasket)
-        if k ∉ vneOperators
-            delete!(operators, k)
-        end
+        delete!(operators, k)
     end
     keySet = collect(keys(operators))
 
-    Threads.@threads for key in keySet
+    for key in keySet
         operators[key] = kron(rotation' * operators[key] * rotation, identityEnv)
     end
     bondAntiSymmzer = rotation' * bondAntiSymmzer * rotation
-    Threads.@threads for (name, corrOperator) in collect(corrOperatorDict)
+    for (name, corrOperator) in collect(corrOperatorDict)
         if !isnothing(corrOperator)
             corrOperatorDict[name] = kron(rotation' * corrOperator * rotation, identityEnv)
         end
@@ -438,15 +435,8 @@ function IterDiag(
         end
 
         hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
-                                                                                   operators, rotation, bondAntiSymmzer, 
-                                                                                   corrOperatorDict, Tuple{String, Vector{Int64}}[],
+                                                                                   operators, rotation, bondAntiSymmzer, corrOperatorDict
                                                                                   )
-
-        #=if !isnothing(specFuncOperators)=#
-        #=    for name in filter(name -> !isempty(specFuncOperators[name]), specFuncNames)=#
-        #=        push!(specFuncOperators[name], corrOperatorDict[name])=#
-        #=    end=#
-        #=end=#
 
         # define the qbit operators for the new sites
         for site in newSitesFlow[step+1] 
@@ -476,6 +466,7 @@ function IterDiag(
 
         append!(currentSites, newSitesFlow[step+1])
         next!(pbar; showvalues=[("Size", size(hamltMatrix))])
+        GC.gc()
     end
     
     return savePaths, resultsDict, specFuncOperators
@@ -649,7 +640,6 @@ function IterSpecFunc(
     quantumNoReq = CombineRequirements(occReq, magzReq)
     excQuantumNoReq = CombineRequirements(excOccReq, excMagzReq)
     totalSpecFunc = zeros(size(freqValues)...)
-    println(length(specFuncOperators["destroy"]))
     
     for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators["create"]):end-1])
     #=for (i, savePath) in enumerate(savePaths[end-length(specFuncOperators["create"]):end-1])=#
@@ -660,7 +650,6 @@ function IterSpecFunc(
         quantumNos = data["quantumNos"]
         currentSites = data["currentSites"]
 
-        println(quantumNos[sortperm(eigVals)[1]])
         if isnothing(quantumNos)
             minimalEigVecs = eigVecs
             minimalEigVals = eigVals
@@ -680,10 +669,8 @@ function IterSpecFunc(
                             Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
                             freqValues, standDev;
                             normalise=true, degenTol=degenTol)
-        println(i, (maximum(specFunc), minimum(specFunc)))
         totalSpecFunc .+= specFunc
     end
-    println(sum(totalSpecFunc * (maximum(freqValues) - minimum(freqValues)) / (length(freqValues) - 1)))
     return totalSpecFunc
     #=if sum(totalSpecFunc * (maximum(freqValues) - minimum(freqValues)) / (length(freqValues) - 1)) < 1e-2=#
     #=    return  0. * totalSpecFunc=#

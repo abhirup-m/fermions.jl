@@ -296,6 +296,9 @@ function SpecFunc(
             spectralWeights = [(excitationDestroyBra * excitedState) * (excitedState' * excitationCreate),
                                (excitedState' * excitationDestroy) * (excitationCreateBra * excitedState)
                               ]
+            #=if abs(spectralWeights[2]) > 1e-10=#
+            #=    println(spectralWeights[2])=#
+            #=end=#
             specFunc .+= spectralWeights[1] * broadeningFunc(freqValues .+ energyGs .- eigVals[index], standDev)
             specFunc .+= spectralWeights[2] * broadeningFunc(freqValues .- energyGs .+ eigVals[index], standDev)
         end
