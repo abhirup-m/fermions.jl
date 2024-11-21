@@ -206,16 +206,13 @@ function TruncateSpectrum(
         degenTol::Float64,
         currentSites::Vector{Int64},
         quantumNos::Union{Nothing,Vector{NTuple{1, Int64}},Vector{NTuple{2, Int64}}}, 
+        maxMaxSize::Int64,
     )
     if isnothing(corrQuantumNoReq)
         
+        retainIndices = 1:length(eigVals)
         # ensure we aren't truncating in the middle of degenerate states
-        maxSize = BlurredMaxSize(maxSize, eigVals, degenTol)
-        rotation = rotation[:, 1:maxSize]
-        if !isnothing(quantumNos)
-            quantumNos = quantumNos[1:maxSize]
-        end
-        eigVals = eigVals[1:maxSize]
+        filter!(i -> eigVals[i] ≤ eigVals[maxSize] + degenTol, retainIndices)
     else
         retainIndices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
         otherIndices = findall(q -> !corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
@@ -229,11 +226,16 @@ function TruncateSpectrum(
             cutOffEnergy = eigVals[retainIndices][maxSize] + degenTol
             filter!(i -> eigVals[i] ≤ cutOffEnergy, retainIndices)
         end
-
-        rotation = rotation[:, retainIndices]
-        quantumNos = quantumNos[retainIndices]
-        eigVals = eigVals[retainIndices]
     end
+    if length(retainIndices) > maxMaxSize && maxMaxSize > 0
+        retainIndices = retainIndices[1:maxMaxSize]
+    end
+
+    rotation = rotation[:, retainIndices]
+    if !isnothing(quantumNos)
+        quantumNos = quantumNos[retainIndices]
+    end
+    eigVals = eigVals[retainIndices]
     return rotation, eigVals, quantumNos
 end
 
@@ -311,6 +313,7 @@ function IterDiag(
     dataDir::String,
     silent::Bool,
     specFuncNames::Vector{String},
+    maxMaxSize::Int64,
 )
 
     currentSites = Int64[]
@@ -426,7 +429,8 @@ function IterDiag(
         if length(eigVals) > div(maxSize, 2^length(newSitesFlow[step+1]))
             rotation, eigVals, quantumNos = TruncateSpectrum(quantumNoReq, rotation, eigVals, 
                                                              div(maxSize, 2^length(newSitesFlow[step+1])), 
-                                                             degenTol, currentSites, quantumNos
+                                                             degenTol, currentSites, quantumNos, 
+                                                             div(maxMaxSize, 2^length(newSitesFlow[step+1])),
                                                             )
         end
 
@@ -489,6 +493,7 @@ function IterDiag(
     mutInfoDefDict::Dict{String, NTuple{2,Vector{Int64}}}=Dict{String, NTuple{2,Vector{Int64}}}(),
     specFuncDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}(),
     silent::Bool=false,
+    maxMaxSize::Int64=0,
 )
 
     exitCode = 0
@@ -571,6 +576,7 @@ function IterDiag(
                                                          dataDir,
                                                          silent,
                                                          collect(values(specFuncToCorrMap)),
+                                                         maxMaxSize,
                                                         )
 
     if !isempty(specFuncToCorrMap)
