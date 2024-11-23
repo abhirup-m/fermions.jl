@@ -3,32 +3,39 @@ function KondoModel(
         hop_t::Float64,
         kondoJ::Float64;
         globalField::Float64=0.,
+        couplingTolerance::Float64=1e-15,
     )
     hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
 
     # intra-bath hopping
-    for site in 1:(numBathSites-1)
-        push!(hamiltonian, ("+-",  [1 + 2 * site, 3 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
-        push!(hamiltonian, ("+-",  [3 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
-        push!(hamiltonian, ("+-",  [2 + 2 * site, 4 + 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
-        push!(hamiltonian, ("+-",  [4 + 2 * site, 2 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
+    if abs(hop_t) > couplingTolerance
+        for site in 1:(numBathSites-1)
+            push!(hamiltonian, ("+-",  [1 + 2 * site, 3 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
+            push!(hamiltonian, ("+-",  [3 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
+            push!(hamiltonian, ("+-",  [2 + 2 * site, 4 + 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
+            push!(hamiltonian, ("+-",  [4 + 2 * site, 2 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
+        end
     end
 
     # kondo terms
-    push!(hamiltonian, ("nn",  [1, 3], kondoJ/4)) # n_{d up, n_{0 up}
-    push!(hamiltonian, ("nn",  [1, 4], -kondoJ/4)) # n_{d up, n_{0 down}
-    push!(hamiltonian, ("nn",  [2, 3], -kondoJ/4)) # n_{d down, n_{0 up}
-    push!(hamiltonian, ("nn",  [2, 4], kondoJ/4)) # n_{d down, n_{0 down}
-    push!(hamiltonian, ("+-+-",  [1, 2, 4, 3], kondoJ/2)) # S_d^+ S_0^-
-    push!(hamiltonian, ("+-+-",  [2, 1, 3, 4], kondoJ/2)) # S_d^- S_0^+
+    if abs(kondoJ) > couplingTolerance
+        push!(hamiltonian, ("nn",  [1, 3], kondoJ/4)) # n_{d up, n_{0 up}
+        push!(hamiltonian, ("nn",  [1, 4], -kondoJ/4)) # n_{d up, n_{0 down}
+        push!(hamiltonian, ("nn",  [2, 3], -kondoJ/4)) # n_{d down, n_{0 up}
+        push!(hamiltonian, ("nn",  [2, 4], kondoJ/4)) # n_{d down, n_{0 down}
+        push!(hamiltonian, ("+-+-",  [1, 2, 4, 3], kondoJ/2)) # S_d^+ S_0^-
+        push!(hamiltonian, ("+-+-",  [2, 1, 3, 4], kondoJ/2)) # S_d^- S_0^+
+    end
 
     # global magnetic field (to lift any trivial degeneracy)
-    if globalField ≠ 0
+    if abs(globalField) > couplingTolerance
         for site in 0:numBathSites
             push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
             push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
         end
     end
+
+    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
 
     return hamiltonian
 end
@@ -40,12 +47,67 @@ function KondoModel(
         kondoJ::Float64;
         globalField::Float64=0.,
         cavityIndices::Vector{Int64}=Int64[],
+        couplingTolerance::Float64=1e-15,
     )
     numBathSites = length(dispersion)
     hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
 
     # kinetic energy
     for site in 1:numBathSites
+        if abs(dispersion[site]) < couplingTolerance
+            continue
+        end
+        push!(hamiltonian, ("n",  [1 + 2 * site], dispersion[site])) # up spin
+        push!(hamiltonian, ("n",  [2 + 2 * site], dispersion[site])) # down spin
+    end
+
+    # kondo terms
+    if abs(kondoJ) > couplingTolerance
+        for indices in Iterators.product(1:numBathSites, 1:numBathSites)
+            if any(∈(cavityIndices), indices)
+                continue
+            end
+            up1, up2 = 2 .* indices .+ 1
+            down1, down2 = (up1, up2) .+ 1
+            push!(hamiltonian, ("n+-",  [1, up1, up2], kondoJ_indices / 4)) # n_{d up, n_{0 up}
+            push!(hamiltonian, ("n+-",  [1, down1, down2], -kondoJ_indices / 4)) # n_{d up, n_{0 down}
+            push!(hamiltonian, ("n+-",  [2, up1, up2], -kondoJ_indices / 4)) # n_{d down, n_{0 up}
+            push!(hamiltonian, ("n+-",  [2, down1, down2], kondoJ_indices / 4)) # n_{d down, n_{0 down}
+            push!(hamiltonian, ("+-+-",  [1, 2, down1, up2], kondoJ_indices / 2)) # S_d^+ S_0^-
+            push!(hamiltonian, ("+-+-",  [2, 1, up1, down2], kondoJ_indices / 2)) # S_d^- S_0^+
+        end
+    end
+
+    # global magnetic field (to lift any trivial degeneracy)
+    if abs(globalField) > couplingTolerance
+        for site in 0:numBathSites
+            push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
+            push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
+        end
+    end
+
+    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
+
+    return hamiltonian
+end
+export KondoModel
+
+
+function KondoModel(
+        dispersion::Vector{Float64},
+        kondoJ::Matrix{Float64};
+        globalField::Float64=0.,
+        couplingTolerance::Float64=1e-15,
+        cavityIndices::Vector{Int64}=Int64[],
+    )
+    numBathSites = length(dispersion)
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+
+    # kinetic energy
+    for site in 1:numBathSites
+        if abs(dispersion[site]) < couplingTolerance
+            continue
+        end
         push!(hamiltonian, ("n",  [1 + 2 * site], dispersion[site])) # up spin
         push!(hamiltonian, ("n",  [2 + 2 * site], dispersion[site])) # down spin
     end
@@ -54,11 +116,10 @@ function KondoModel(
     for indices in Iterators.product(1:numBathSites, 1:numBathSites)
         if any(∈(cavityIndices), indices)
             kondoJ_indices = 0
-            continue
         else
-            kondoJ_indices = kondoJ
+            kondoJ_indices = kondoJ[indices...]
         end
-        if abs(kondoJ) < 1e-15
+        if abs(kondoJ_indices) < couplingTolerance
             continue
         end
         up1, up2 = 2 .* indices .+ 1
@@ -72,12 +133,14 @@ function KondoModel(
     end
 
     # global magnetic field (to lift any trivial degeneracy)
-    if globalField ≠ 0
+    if abs(globalField) > couplingTolerance
         for site in 0:numBathSites
             push!(hamiltonian, ("n",  [1 + 2 * site], globalField))
             push!(hamiltonian, ("n",  [2 + 2 * site], -globalField))
         end
     end
+
+    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
 
     return hamiltonian
 end
@@ -90,21 +153,64 @@ function KondoModel(
         bathInt::Float64;
         intLegs::Int64=4,
         globalField::Float64=0.,
-        cavityIndices::Vector{Int64},
+        couplingTolerance::Float64=1e-15,
+        cavityIndices::Vector{Int64}=Int64[],
     )
     numBathSites = length(dispersion)
-    hamiltonian = KondoModel(dispersion, kondoJ, globalField=globalField, cavityIndices=cavityIndices)
-    for indices in Iterators.product([1:numBathSites for _ in 1:4]...)
-        if length(unique(indices)) > intLegs
+    hamiltonian = KondoModel(dispersion, kondoJ; globalField=globalField, 
+                             cavityIndices=cavityIndices, couplingTolerance=couplingTolerance)
+
+    if abs(bathInt) > couplingTolerance
+        for indices in Iterators.product(repeat([1:numBathSites], 4)...)
+            if length(unique(indices)) > intLegs
+                continue
+            end
+            up1, up2, up3, up4 = 2 .* indices .+ 1
+            down1, down2, down3, down4 = (up1, up2, up3, up4) .+ 1
+            push!(hamiltonian, ("+-+-",  [up1, up2, up3, up4], -bathInt / 2)) # 
+            push!(hamiltonian, ("+-+-",  [down1, down2, down3, down4], -bathInt / 2)) # 
+            push!(hamiltonian, ("+-+-",  [up1, up2, down3, down4], bathInt / 2)) # 
+            push!(hamiltonian, ("+-+-",  [down1, down2, up3, up4], bathInt / 2)) # 
+        end
+    end
+
+    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
+
+    return hamiltonian
+end
+export KondoModel
+
+
+function KondoModel(
+        dispersion::Vector{Float64},
+        kondoJ::Matrix{Float64},
+        k_indices::Vector{Int64},
+        bathIntFunc::Function;
+        bathIntLegs::Int64=4,
+        globalField::Float64=0.,
+        couplingTolerance::Float64=1e-15,
+        cavityIndices::Vector{Int64}=Int64[],
+    )
+    @assert length(k_indices) == length(dispersion)
+
+    numBathSites = length(dispersion)
+    hamiltonian = KondoModel(dispersion, kondoJ; globalField=globalField, 
+                             cavityIndices=cavityIndices, couplingTolerance=couplingTolerance)
+    for indices in Iterators.product(repeat([1:numBathSites], 4)...)
+        bathIntVal = bathIntFunc([k_indices[i] for i in indices])
+        if length(unique(indices)) > bathIntLegs || abs(bathIntVal) < couplingTolerance
             continue
         end
         up1, up2, up3, up4 = 2 .* indices .+ 1
         down1, down2, down3, down4 = (up1, up2, up3, up4) .+ 1
-        push!(hamiltonian, ("+-+-",  [up1, up2, up3, up4], -bathInt / 2)) # 
-        push!(hamiltonian, ("+-+-",  [down1, down2, down3, down4], -bathInt / 2)) # 
-        push!(hamiltonian, ("+-+-",  [up1, up2, down3, down4], bathInt / 2)) # 
-        push!(hamiltonian, ("+-+-",  [down1, down2, up3, up4], bathInt / 2)) # 
+        push!(hamiltonian, ("+-+-",  [up1, up2, up3, up4], -bathIntVal / 2)) # 
+        push!(hamiltonian, ("+-+-",  [down1, down2, down3, down4], -bathIntVal / 2)) # 
+        push!(hamiltonian, ("+-+-",  [up1, up2, down3, down4], bathIntVal / 2)) # 
+        push!(hamiltonian, ("+-+-",  [down1, down2, up3, up4], bathIntVal / 2)) # 
     end
+
+    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
+
     return hamiltonian
 end
 export KondoModel
