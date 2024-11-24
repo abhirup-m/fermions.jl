@@ -1,88 +1,63 @@
-#=@testset "Organise Operator" begin=#
-#=    members = [1, 2, 3, 4]=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-nh", "+-nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members) == (operator, members, 1)=#
-#=    end=#
-#==#
-#=    members = [5, 6, 3, 4]=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-nh", "+-nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members) == (operator, [3, 4, 5, 6], 1)=#
-#=    end=#
-#==#
-#=    members = [1, 2, 5, 6]=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-nh", "+-nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members) == (operator, members, 1)=#
-#=    end=#
-#==#
-#=    members = [5, 1, 3, 6]=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-nh", "+-nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members) == (operator, [1, 3, 5, 6], 1)=#
-#=    end=#
-#==#
-#=    members = [1, 5, 2, 3]=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-", "nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members) == (operator[[1, 3, 4, 2]], [1, 2, 3, 5], -1)=#
-#=    end=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "nh", "+-")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members, newMembers) == (operator[[1, 3, 4, 2]], [1, 2, 3, 5], -1)=#
-#=    end=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-", "+-")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members, newMembers) == (operator[[1, 3, 4, 2]], [1, 2, 3, 5], 1)=#
-#=    end=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "nh", "nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members, newMembers) == (operator[[1, 3, 4, 2]], [1, 2, 3, 5], 1)=#
-#=    end=#
-#==#
-#=    members = [1, 2, 5, 3]=#
-#=    newMembers = [5, 6]=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-nh", "+-nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members, newMembers) == (operator[[1, 2, 4, 3]], [1, 2, 3, 5],=#
-#=                                                                  ifelse(operator[4] ∈ "+-", -1, 1))=#
-#=    end=#
-#==#
-#=    members = [1, 5, 2, 6]=#
-#=    newMembers = [5, 6]=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-nh", "+-nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members, newMembers) == (operator[[1, 3, 2, 4]], [1, 2, 5, 6],=#
-#=                                                                  ifelse(operator[3] ∈ "+-", -1, 1))=#
-#=    end=#
-#==#
-#=    members = [1, 5, 6, 2]=#
-#=    newMembers = [5, 6]=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-nh", "+-nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members, newMembers) == (operator[[1, 4, 2, 3]], [1, 2, 5, 6], 1)=#
-#=    end=#
-#==#
-#=    members = [5, 1, 6, 2]=#
-#=    newMembers = [5, 6]=#
-#=    for bits in Iterators.product("+-nh", "+-nh", "+-nh", "+-nh")=#
-#=        operator = join(bits)=#
-#=        @test OrganiseOperator(operator, members, newMembers) == (operator[[2, 4, 1, 3]], [1, 2, 5, 6], =#
-#=                                                                  ifelse(operator[2] ∈ "+-", -1, 1))=#
-#=    end=#
-#==#
-#=    for oldPosition in 1:4=#
-#=        members = [5,6,5,6]=#
-#=        members[oldPosition] = 1=#
-#=        newMembers = [5, 6]=#
-#=        for bits in Iterators.product("+-nh", "+-nh", "+-nh", "+-nh")=#
-#=            operator = join(bits)=#
-#=            @test OrganiseOperator(operator, members, newMembers) == (operator, members, 1)=#
-#=        end=#
-#=    end=#
-#=end=#
+const op_cd = ('+', '-')
+const op_nh = ('n', 'h')
 
+@testset "Organise Operator" begin
+    members = [1, 2, 3]
+    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
+        operator = join(bits)
+        sign = 1
+        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), 1)
+    end
+
+    members = [1, 3, 2]
+    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
+        operator = join(bits)
+        sign = ifelse(count(∈(op_cd), operator[2:3]) == 2, -1, 1)
+        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+    end
+
+    members = [2, 1, 3]
+    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
+        operator = join(bits)
+        sign = ifelse(count(∈(op_cd), operator[1:2]) == 2, -1, 1)
+        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+    end
+
+    members = [3, 1, 2]
+    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
+        operator = join(bits)
+        sign = ifelse(operator[1] ∈ op_cd && count(∈(op_cd), operator[2:3]) == 1, -1, 1)
+        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+    end
+
+    members = [1, 2, 3, 4]
+    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
+        operator = join(bits)
+        sign = 1
+        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), 1)
+    end
+
+    members = [1, 3, 2, 4]
+    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
+        operator = join(bits)
+        sign = ifelse(count(∈(op_cd), operator[2:3]) == 2, -1, 1)
+        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+    end
+
+    members = [3, 1, 4, 2]
+    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
+        operator = join(bits)
+        sign = ifelse(count(∈(op_cd), operator[3:4]) == 2, -1, 1) * ifelse(operator[1] ∈ op_cd && count(∈(op_cd), operator[[2, 4]]) == 1, -1, 1)
+        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+    end
+
+    members = [4, 2, 3, 1]
+    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
+        operator = join(bits)
+        sign = ifelse(operator[1] ∈ op_cd && isodd(count(∈(op_cd), operator[2:4])), -1, 1) * ifelse(operator[4] ∈ op_cd && count(∈(op_cd), operator[2:3]) == 1, -1, 1)
+        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+    end
+end
 
 @testset "Iter Diag" begin
     totalSites = 3
@@ -144,11 +119,11 @@
             count += 1
         end
 
-        savePaths, _ = IterDiag(hamFlow, 1100, correlationDefDict = testingCorrelations, silent=true)
-        results = deserialize.(savePaths)
+        savePaths, resultsDict = IterDiag(hamFlow, 1100, correlationDefDict = testingCorrelations, silent=true)
+        #=results = deserialize.(savePaths)=#
         for (k, v) in testingCorrelations
             exactResult = F.vectors[:, 1]' * OperatorMatrix(basis, v) * F.vectors[:, 1]
-            @test isapprox(exactResult, results[end-1]["results"][k][end], atol=1e-10)
+            @test isapprox(exactResult, resultsDict[k], atol=1e-10)
         end
 
         testingCorrelations = Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}()
@@ -156,11 +131,11 @@
             testingCorrelations[string(count)] = [(join(bits), collect(members), 1.)]
             count += 1
         end
-        savePaths, _ = IterDiag(hamFlow, 1100, correlationDefDict = testingCorrelations, silent=true)
-        results = deserialize.(savePaths)
+        savePaths, resultsDict = IterDiag(hamFlow, 1100, correlationDefDict = testingCorrelations, silent=true)
+        #=results = deserialize.(savePaths)=#
         for (k, v) in testingCorrelations
             exactResult = F.vectors[:, 1]' * OperatorMatrix(basis, v) * F.vectors[:, 1]
-            @test isapprox(exactResult, results[end-1]["results"][k][end], atol=1e-10)
+            @test isapprox(exactResult, resultsDict[k], atol=1e-10)
         end
 
         testingCorrelations = Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}()
@@ -168,11 +143,11 @@
             testingCorrelations[string(count)] = [(join(bits), collect(members), 1.)]
             count += 1
         end
-        savePaths, _ = IterDiag(hamFlow, 1100, correlationDefDict = testingCorrelations, silent=true)
-        results = deserialize.(savePaths)
+        savePaths, resultsDict = IterDiag(hamFlow, 1100, correlationDefDict = testingCorrelations, silent=true)
+        #=results = deserialize.(savePaths)=#
         for (k, v) in testingCorrelations
             exactResult = F.vectors[:, 1]' * OperatorMatrix(basis, v) * F.vectors[:, 1]
-            @test isapprox(exactResult, results[end-1]["results"][k][end], atol=1e-10)
+            @test isapprox(exactResult, resultsDict[k], atol=1e-10)
         end
     end
 end
