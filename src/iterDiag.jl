@@ -29,13 +29,23 @@ function OrganiseOperator(
             continue
         else
 
+            sortPos = sortperm(members)[position]
+
             # sign change incurred when the operator at the end is teleported to its
             # correct sorted position `p'.
-            forwardSign = (-1)^length(filter(∈(('+', '-')), operator[sortperm(members)[position]+1:position]))
+            if operator[position] ∈ ('+', '-')
+                forwardSign = (-1)^count(∈(('+', '-')), operator[sortPos:position-1])
+            else
+                forwardSign = 1
+            end
 
             # sign change incurred when the operator currently sitting at `p' is 
             # teleported to the position left vacant by the previous teleportation.
-            backwardSign = (-1)^length(filter(∈(('+', '-')), operator[sortperm(members)[position]+1:position-1]))
+            if operator[sortPos] ∈ ('+', '-')
+                backwardSign = (-1)^count(∈(('+', '-')), operator[sortPos+1:position-1])
+            else
+                backwardSign = 1
+            end
 
             sign *= forwardSign * backwardSign
             
@@ -141,7 +151,7 @@ function CombineRequirements(
     elseif !isnothing(occReq) && !isnothing(magzReq)
         requirement = (q, N) -> occReq(q[1], N) && magzReq(q[2], N)
     else
-        requirement = (q, N) -> true
+        requirement = nothing
     end
     return requirement
 end
@@ -478,7 +488,7 @@ function IterDiag(
             resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
 
             indices = 1:length(eigVals)
-            if !isnothing(corrQuantumNoReq)
+            if !isnothing(corrQuantumNoReq) && !isnothing(quantumNos)
                 indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
             end
             finalState = rotation[:, indices[sortperm(eigVals[indices])[1]]]
