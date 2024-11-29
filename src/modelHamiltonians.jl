@@ -43,6 +43,32 @@ export KondoModel
 
 
 function KondoModel(
+        numBathSites::Int64,
+        hop_t::Float64,
+        kondoJ::Float64,
+        bathInt::Float64;
+        globalField::Float64=0.,
+        couplingTolerance::Float64=1e-15,
+    )
+    hamiltonian = KondoModel(numBathSites, hop_t, kondoJ; 
+                             globalField=globalField,
+                             couplingTolerance=couplingTolerance
+                            )
+
+    if abs(bathInt) > couplingTolerance
+        push!(hamiltonian, ("n", [3], -bathInt / 2)) # 
+        push!(hamiltonian, ("n", [4], -bathInt / 2)) # 
+        push!(hamiltonian, ("nn", [3, 4], bathInt)) # 
+    end
+
+    @assert !isempty(hamiltonian) "Hamiltonian is empty!"
+
+    return hamiltonian
+end
+export KondoModel
+
+
+function KondoModel(
         dispersion::Vector{Float64},
         kondoJ::Float64;
         globalField::Float64=0.,
@@ -69,12 +95,12 @@ function KondoModel(
             end
             up1, up2 = 2 .* indices .+ 1
             down1, down2 = (up1, up2) .+ 1
-            push!(hamiltonian, ("n+-",  [1, up1, up2], kondoJ_indices / 4)) # n_{d up, n_{0 up}
-            push!(hamiltonian, ("n+-",  [1, down1, down2], -kondoJ_indices / 4)) # n_{d up, n_{0 down}
-            push!(hamiltonian, ("n+-",  [2, up1, up2], -kondoJ_indices / 4)) # n_{d down, n_{0 up}
-            push!(hamiltonian, ("n+-",  [2, down1, down2], kondoJ_indices / 4)) # n_{d down, n_{0 down}
-            push!(hamiltonian, ("+-+-",  [1, 2, down1, up2], kondoJ_indices / 2)) # S_d^+ S_0^-
-            push!(hamiltonian, ("+-+-",  [2, 1, up1, down2], kondoJ_indices / 2)) # S_d^- S_0^+
+            push!(hamiltonian, ("n+-",  [1, up1, up2], kondoJ / 4)) # n_{d up, n_{0 up}
+            push!(hamiltonian, ("n+-",  [1, down1, down2], -kondoJ / 4)) # n_{d up, n_{0 down}
+            push!(hamiltonian, ("n+-",  [2, up1, up2], -kondoJ / 4)) # n_{d down, n_{0 up}
+            push!(hamiltonian, ("n+-",  [2, down1, down2], kondoJ / 4)) # n_{d down, n_{0 down}
+            push!(hamiltonian, ("+-+-",  [1, 2, down1, up2], kondoJ / 2)) # S_d^+ S_0^-
+            push!(hamiltonian, ("+-+-",  [2, 1, up1, down2], kondoJ / 2)) # S_d^- S_0^+
         end
     end
 
@@ -151,7 +177,7 @@ function KondoModel(
         dispersion::Vector{Float64},
         kondoJ::Float64,
         bathInt::Float64;
-        intLegs::Int64=4,
+        bathIntLegs::Int64=4,
         globalField::Float64=0.,
         couplingTolerance::Float64=1e-15,
         cavityIndices::Vector{Int64}=Int64[],
@@ -162,7 +188,7 @@ function KondoModel(
 
     if abs(bathInt) > couplingTolerance
         for indices in Iterators.product(repeat([1:numBathSites], 4)...)
-            if length(unique(indices)) > intLegs
+            if length(unique(indices)) > bathIntLegs
                 continue
             end
             up1, up2, up3, up4 = 2 .* indices .+ 1
