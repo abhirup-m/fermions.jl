@@ -1,3 +1,5 @@
+using Random
+
 @testset "BasisStates" begin
 
     @test issetequal(BasisStates(2),
@@ -161,4 +163,17 @@ end
     coeffs2 = rand(length(basis))
     totalState2 = mergewith(+, [Dict(k => coeffs2[i] * v for (k, v) in dict) for (i, dict) in enumerate(basis)]...)
     @test StateOverlap(totalState1, totalState2) ≈ sum(coeffs1 .* coeffs2)
+end
+
+
+@testset "Dagger" begin
+    qubitOperators = ['+', '-', 'n', 'h', '+', '-', 'n', 'h', '+', '-', 'n', 'h']
+    numSites = 8
+    basis = BasisStates(numSites)
+    @testset for numLegs in 1:numSites
+        operator = [(join(shuffle(qubitOperators)[1:numLegs]), collect(shuffle(1:numSites)[1:numLegs]), rand()) for _ in 1:10]
+        hermConj = Dagger(deepcopy(operator))
+        errorMatrix = OperatorMatrix(basis, hermConj) - OperatorMatrix(basis, operator)'
+        @test errorMatrix .|> abs |> maximum == 0
+    end
 end

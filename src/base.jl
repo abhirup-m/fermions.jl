@@ -344,6 +344,13 @@ end
 export StateOverlap
 
 
+"""
+    ExpandIntoBasis(state, basisStates)
+
+Returns the basis decomposition of the provided state. That is, 
+if the basis is {b_i} and the state is {b_1=>c_1, b_2=>c_2, ...},
+the function returns [c_1, c_2, ...].
+"""
 function ExpandIntoBasis(
         state::Dict{BitVector,Float64}, 
         basisStates::Vector{Dict{BitVector,Float64}},
@@ -357,6 +364,12 @@ end
 export ExpandIntoBasis
 
 
+"""
+    GetSector(state, symmetries)
+
+Returns the symmetry sector of the provided state. If symmetries only
+has 'N'('Z'), returns the total occupancy (total magnetization).
+"""
 function GetSector(
         state::Dict{BitVector, Float64}, 
         symmetries::Vector{Char},
@@ -364,13 +377,21 @@ function GetSector(
     bstate = sort(collect(keys(state)), by=k->abs(state[k]))[end]
     totOcc = sum(bstate)
     magz = sum(bstate[1:2:end]) - sum(bstate[2:2:end])
-    return ifelse(symmetries == ['N', 'Z'], (totOcc, magz), ifelse(symmetries == ['N'], (totOcc,), (magz,)))
+    if symmetries == ['N']
+        return (totOcc,)
+    elseif symmetries == ['Z']
+        return (magz,)
+    elseif symmetries == ['N', 'Z']
+        return (totOcc, magz)
+    else
+        @assert false "Incorrect format of `symmetries`."
+    end
 end
 export GetSector
 
 
 """
-    roundTo(val, tolerance)
+    RoundTo(val, tolerance)
 
 Round the provided float to the specified tolerance.
 
@@ -387,3 +408,63 @@ function RoundTo(
     return round(val, digits=trunc(Int, -log10(tolerance)))
 end
 export RoundTo
+
+
+function PermuteSites(
+        state::BitVector,
+        permutation::Vector{Int64},
+    )
+    @assert length(state) == length(permutation)
+    sign = 1
+    currentPerm = collect(1:length(state))
+    while currentPerm ≠ permutation
+        for index in eachindex(currentPerm[1:end-1])
+            if findfirst(==(currentPerm[index]), permutation) > findfirst(==(currentPerm[index + 1]), permutation)
+                currentPerm[index], currentPerm[index+1] = currentPerm[index+1], currentPerm[index]
+                sign *= ifelse(state[index] == 1 && state[index+1] == 1, -1, 1)
+                state[index], state[index+1] = state[index+1], state[index]
+            end
+        end
+    end
+    return state, sign
+end
+export PermuteSites
+
+
+function PermuteSites(
+        state::Dict{BitVector, Float64},
+        permutation::Vector{Int64},
+    )
+    newState = Dict{BitVector, Float64}()
+    for (k,v) in state
+        newBasisState, sign = PermuteSites(k, permutation)
+        newState[newBasisState] = sign * v
+    end
+    return newState
+end
+export PermuteSites
+
+
+function Dagger(
+        operator::String,
+        members::Vector{Int64};
+    )
+    newOpType = reverse(operator)
+    newOpType = replace(newOpType, '+' => '-', '-' => '+')
+    newMembers = reverse(members)
+    return newOpType, newMembers
+end
+export Dagger
+
+
+function Dagger(
+        operator::Vector{Tuple{String,Vector{Int64},Float64}};
+    )
+    for i in eachindex(operator)
+        newOpType, newMembers = Dagger(operator[i][1:2]...)
+        insert!(operator, i+1, (newOpType, newMembers, operator[i][3]))
+        deleteat!(operator, i)
+    end
+    return operator
+end
+export Dagger
