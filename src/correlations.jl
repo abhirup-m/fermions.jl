@@ -62,56 +62,71 @@ julia> reducedDM(state, [1])
 """
 function ReducedDM(
         state::Dict{BitVector,Float64},
-        reducingIndices::Vector{Int64};
+        nonTracedSites::Vector{Int64};
         reducingConfigs::Vector{BitVector}=BitVector[]
     )
-
     # indices of the degrees of freedom that will not be summed over.
-    nonReducingIndices = setdiff(1:length(collect(keys(state))[1]), reducingIndices)
+    tracedSites = setdiff(1:length(collect(keys(state))[1]), nonTracedSites)
 
-    # get all the configurations of the subsystem A in order to perform the partial trace.
-    if length(reducingConfigs) == 0
-        reducingConfigs = [collect(config) for config in Iterators.product(fill([1, 0], length(reducingIndices))...)]
-    end
-    reducingConfigsMaps = Dict(config => i for (i, config) in enumerate(reducingConfigs))
+    gatheringPermutation = vcat(nonTracedSites, tracedSites)
+    permutedState = PermuteSites(deepcopy(state), gatheringPermutation)
 
-    # reducingCoeffs = Dict{BitVector,Dict{BitVector,Float64}}(BitVector(config) => Dict()
-    # for config in reducingConfigs)
-    #
-    reducingCoeffs = Dict{BitVector,Vector{Float64}}()
-    reducingIndexSets = Dict{BitVector,Vector{Int64}}()
-    reducedDMatrix = zeros(length(reducingConfigs), length(reducingConfigs))
-
-    # |ψ⟩ can be written as ∑ c_{im} |i>|m>, where i is a state in the subspace A,
-    # while m is a state in the subspace A-complement.
-    for (psi_im, c_im) in state
-
-        # get |i>
-        psi_i = psi_im[reducingIndices]
-        index_i = reducingConfigsMaps[psi_i]
-
-        # get |m>
-        psi_m = psi_im[nonReducingIndices]
-
-        if psi_i ∉ reducingConfigs
-            continue
+    smallerBasis = [collect(keys(b))[1] for b in BasisStates(length(nonTracedSites))]
+    reducedDMatrix = zeros(length(smallerBasis), length(smallerBasis))
+    for (leftState, val1) in permutedState
+        leftBasisState = Bool.(leftState[findall(∈(nonTracedSites), gatheringPermutation)])
+        nonReducingConfig = leftState[findall(∈(tracedSites), gatheringPermutation)]
+        for (rightState, val2) in permutedState
+            if rightState[findall(∈(tracedSites), gatheringPermutation)] ≠ nonReducingConfig
+                continue
+            end
+            rightBasisState = Bool.(rightState[findall(∈(nonTracedSites), gatheringPermutation)])
+            leftIndex = findfirst(==(leftBasisState), smallerBasis)
+            rightIndex = findfirst(==(rightBasisState), smallerBasis)
+            reducedDMatrix[leftIndex, rightIndex] += val1 * val2'
         end
-
-        if psi_m ∉ keys(reducingCoeffs)
-            reducingCoeffs[psi_m] = [c_im]
-            reducingIndexSets[psi_m] = [index_i]
-        else
-            reducedDMatrix[index_i, reducingIndexSets[psi_m]] .+= c_im .* reducingCoeffs[psi_m]
-            reducedDMatrix[reducingIndexSets[psi_m], index_i] .+= c_im .* reducingCoeffs[psi_m]
-            push!(reducingCoeffs[psi_m], c_im)
-            push!(reducingIndexSets[psi_m], reducingConfigsMaps[psi_i])
-        end
-        reducedDMatrix[index_i, index_i] += c_im^2
     end
-
     return reducedDMatrix ./ sum(diag(reducedDMatrix))
 end
 export ReducedDM
+
+
+function PartialTraceProjectors(
+        nonTracedSites::Vector{Int64};
+        nonTracedConfigs::Vector{BitVector}=BitVector[]
+    )
+    newBasis = mergewith(+, BasisStates(length(nonTracedSites))...) |> keys |> collect
+    partialTraceProjectors = Array{Union{Nothing, Vector{Tuple{String, Vector{Int64}, Float64}}}}(nothing, length(newBasis), length(newBasis))
+    for (leftIndex, rightIndex) in Iterators.product(eachindex(newBasis), eachindex(newBasis))
+        leftBasisState = newBasis[leftIndex]
+        rightBasisState = newBasis[rightIndex]
+        preOperator = join(map(c -> c == 1 ? '+' : 'h', newBasis[rightIndex]))
+        postOperator = join(map(c -> c == 1 ? '+' : 'h', newBasis[leftIndex]))
+        postOperatorDag = Dagger(postOperator, nonTracedSites)
+        partialTraceProjectors[leftIndex, rightIndex] = [(preOperator * postOperatorDag[1], vcat(nonTracedSites, postOperatorDag[2]), 1.)]
+    end
+    return partialTraceProjectors
+end
+export PartialTraceProjectors
+
+
+function ReducedDMProjectorBased(
+        state::Dict{BitVector,Float64},
+        nonTracedSites::Vector{Int64};
+        nonTracedConfigs::Vector{BitVector}=BitVector[]
+    )
+    partialTraceProjectors = PartialTraceProjectors(nonTracedSites, nonTracedConfigs=nonTracedConfigs)
+    reducedDMatrix = zeros(size(partialTraceProjectors)...)
+    @assert size(partialTraceProjectors)[1] == size(partialTraceProjectors)[2]
+    for leftIndex in 1:size(partialTraceProjectors)[1]
+        for rightIndex in leftIndex:size(partialTraceProjectors)[2]
+            reducedDMatrix[leftIndex, rightIndex] += GenCorrelation(state, partialTraceProjectors[leftIndex, rightIndex])
+            reducedDMatrix[rightIndex, leftIndex] = reducedDMatrix[leftIndex, rightIndex]'
+        end
+    end
+    return reducedDMatrix ./ sum(diag(reducedDMatrix))
+end
+export ReducedDMProjectorBased
 
 
 """
@@ -296,9 +311,6 @@ function SpecFunc(
             spectralWeights = [(excitationDestroyBra * excitedState) * (excitedState' * excitationCreate),
                                (excitedState' * excitationDestroy) * (excitationCreateBra * excitedState)
                               ]
-            #=if abs(spectralWeights[2]) > 1e-10=#
-            #=    println(spectralWeights[2])=#
-            #=end=#
             specFunc .+= spectralWeights[1] * broadeningFunc(freqValues .+ energyGs .- eigVals[index], standDev)
             specFunc .+= spectralWeights[2] * broadeningFunc(freqValues .- energyGs .+ eigVals[index], standDev)
         end
@@ -444,7 +456,7 @@ function SpecFunc(
 
     groundStateEnergy = minimum(classifiedEnergies[groundStateSector])
 
-    groundStateCandidates = classifiedSpectrum[groundStateSector] #[sortperm(classifiedEnergies[groundStateSector])[1]]
+    groundStateCandidates = classifiedSpectrum[groundStateSector]
     for groundState in groundStateCandidates[classifiedEnergies[groundStateSector] .≤ groundStateEnergy  + abs(groundStateEnergy) * degenTol]
 
         # calculate sector of excited states

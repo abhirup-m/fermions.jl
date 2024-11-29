@@ -1,3 +1,5 @@
+using Random, LinearAlgebra
+
 @testset "Groundstate Correlation" begin
     basisStates = BasisStates(4)
     hop_t = rand()
@@ -11,9 +13,9 @@
     totSzOperator = [("n", [1], 0.5), ("n", [2], -0.5), ("n", [3], 0.5), ("n", [4], -0.5)]
     spinFlipOperator = [("+-+-", [1, 2, 4, 3], 1.0), ("+-+-", [3, 4, 2, 1], 1.0)]
 
-    @test GenCorrelation(eigvecs[1], doubOccOperator) ≈ (Δ - U) / (4 * Δ)
-    @test GenCorrelation(eigvecs[1], totSzOperator) ≈ 0
-    @test GenCorrelation(eigvecs[1], spinFlipOperator) ≈ -8 * hop_t^2 / (Δ * (Δ - U))
+    @test isapprox(GenCorrelation(eigvecs[1], doubOccOperator), (Δ - U) / (4 * Δ), atol=1e-10)
+    @test isapprox(GenCorrelation(eigvecs[1], totSzOperator), 0, atol=1e-10)
+    @test isapprox(GenCorrelation(eigvecs[1], spinFlipOperator), -8 * hop_t^2 / (Δ * (Δ - U)), atol=1e-10)
 end
 
 
@@ -28,6 +30,7 @@ end
     end
 
     coeffs = rand(3)
+    coeffs ./= sum(coeffs .^ 2)^0.5
     state = Dict(BitVector([1, 0, 1]) => coeffs[1], BitVector([1, 1, 0]) => coeffs[2], BitVector([0, 1, 1]) => coeffs[3])
     SEE_1, schmidtGap_1 = VonNEntropy(state, [1], schmidtGap=true)
     SEE_2, schmidtGap_2 = VonNEntropy(state, [2], schmidtGap=true)
@@ -70,4 +73,53 @@ end
     specfunc = SpecFunc(eigvals, eigvecs, Dict("destroy" => [("-", [1], 1.0)], "create" => [("+", [1], 1.0)]), omegaVals, basisStates, broadening)
     specfuncCompare = HubbardDimerSpecFunc(eps, U, hop_t, omegaVals, broadening)
     @test specfunc ./ maximum(specfunc) ≈ specfuncCompare ./ maximum(specfuncCompare)
+end
+
+
+@testset "Alternative RDM Methods" begin
+    @testset for totalQubits in 1:8
+        basis = BasisStates(totalQubits)
+        testState = mergewith(+, basis...)
+        @testset for subspaceSize in 1:totalQubits
+            for run in 1:4
+                coeffs = 2 .* rand(length(basis)) .- 1
+                normFactor = sum(coeffs .^ 2)^0.5
+                for (i, state) in enumerate(keys(testState))
+                    testState[state] = coeffs[i] / normFactor
+                end
+                reducingIndices = shuffle(1:totalQubits)[1:subspaceSize]
+                rdm1 = ReducedDM(copy(testState), reducingIndices)
+                rdm2 = ReducedDMProjectorBased(copy(testState), reducingIndices)
+                errorMatrix = rdm1[sortperm(diag(rdm1)), sortperm(diag(rdm1))] .- rdm2[sortperm(diag(rdm2)), sortperm(diag(rdm2))]
+                @test isapprox(errorMatrix .|> abs |> maximum, 0, atol=1e-14)
+            end
+        end
+    end
+end
+
+
+@testset "VNE Order Independence" begin
+    @testset for totalQubits in 6:9
+        basis = BasisStates(totalQubits)
+        testState = mergewith(+, basis...)
+        @testset for subspaceSize in 2:5
+            @testset for method in [ReducedDM, ReducedDMProjectorBased]
+                for run in 1:4
+                    coeffs = 2 .* rand(length(basis)) .- 1
+                    normFactor = sum(coeffs .^ 2)^0.5
+                    for (i, state) in enumerate(keys(testState))
+                        testState[state] = coeffs[i] / normFactor
+                    end
+                    reducingIndices = shuffle(1:totalQubits)[1:subspaceSize]
+                    while issorted(reducingIndices)
+                        reducingIndices = shuffle(1:totalQubits)[1:subspaceSize]
+                    end
+                    rdm1 = method(copy(testState), reducingIndices)
+                    rdm2 = method(copy(testState), sort(reducingIndices))
+                    entanglementSpectrumError = (eigen(rdm1).values .- eigen(rdm2).values) .|> abs |> maximum
+                    @test isapprox(entanglementSpectrumError, 0, atol=1e-14)
+                end
+            end
+        end
+    end
 end
