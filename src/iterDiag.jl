@@ -393,6 +393,7 @@ function IterDiag(
     silent::Bool,
     specFuncNames::Vector{String},
     maxMaxSize::Int64,
+    calculateThroughout::Bool,
 )
 
     # ensure each term of the Hamiltonian is sorted in indices
@@ -459,9 +460,13 @@ function IterDiag(
         end
     end
 
-    resultsDict = Dict{String, Union{Nothing, Float64}}(name => nothing for name in keys(correlationDefDict))
+    if calculateThroughout
+        resultsDict = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(correlationDefDict))
+    else
+        resultsDict = Dict{String, Union{Nothing, Float64}}(name => nothing for name in keys(correlationDefDict))
+    end
     @assert "energyPerSite" ∉ keys(resultsDict)
-    resultsDict["energyPerSite"] = nothing
+    resultsDict["energyPerSite"] = ifelse(calculateThroughout, Float64[], nothing)
 
     pbar = Progress(length(hamltFlow); enabled=!silent)
     for (step, hamlt) in enumerate(hamltFlow)
@@ -485,7 +490,11 @@ function IterDiag(
                                            )
                      )
 
-            resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
+            if calculateThroughout
+                push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
+            else
+                resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
+            end
 
             indices = 1:length(eigVals)
             if !isnothing(corrQuantumNoReq) && !isnothing(quantumNos)
@@ -496,12 +505,34 @@ function IterDiag(
             # calculate correlations using the ground state of the final step
             for (name, correlationDef) in correlationDefDict
                 if !isnothing(corrOperatorDict[name])
-                    resultsDict[name] = finalState' * corrOperatorDict[name] * finalState
+                    correlationValue = finalState' * corrOperatorDict[name] * finalState
+                    if calculateThroughout
+                        push!(resultsDict[name], correlationValue)
+                    else
+                        resultsDict[name] = correlationValue
+                    end
                 end
             end
 
             next!(pbar; showvalues=[("Size", size(hamltMatrix))])
             break
+        end
+
+        if calculateThroughout
+            push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
+
+            indices = 1:length(eigVals)
+            if !isnothing(corrQuantumNoReq) && !isnothing(quantumNos)
+                indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
+            end
+            currentState = rotation[:, indices[sortperm(eigVals[indices])[1]]]
+
+            # calculate correlations using the ground state of the final step
+            for (name, correlationDef) in correlationDefDict
+                if !isnothing(corrOperatorDict[name])
+                    push!(resultsDict[name], currentState' * corrOperatorDict[name] * currentState)
+                end
+            end
         end
 
         # construct a basis and identity matrix for the new sites
@@ -604,6 +635,7 @@ function IterDiag(
     specFuncDefDict::Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}=Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}(),
     silent::Bool=false,
     maxMaxSize::Int64=0,
+    calculateThroughout::Bool=false,
 )
     @assert maxMaxSize == 0 || maxMaxSize ≥ maxSize
 
@@ -754,6 +786,7 @@ function IterDiag(
                                                          silent,
                                                          collect(values(specFuncToCorrMap)),
                                                          maxMaxSize,
+                                                         calculateThroughout,
                                                         )
 
     # if specFuncOperators was requested, convert them back to 
