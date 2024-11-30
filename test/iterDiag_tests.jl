@@ -1,153 +1,183 @@
+using Random
+
 const op_cd = ('+', '-')
 const op_nh = ('n', 'h')
 
-@testset "Organise Operator" begin
-    members = [1, 2, 3]
-    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
-        operator = join(bits)
-        sign = 1
-        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), 1)
+function TestModel(totalSites::Int64)
+    chemPot = 0.1
+    hop_t_nn = rand(totalSites-1)
+    hop_t_nnn = rand(totalSites-2)
+    hubbard_U_nn = rand(totalSites-1)
+    hubbard_U_3 = rand(totalSites-2)
+
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+    for i in 1:totalSites-1
+        push!(hamiltonian, ("+-", [i, i + 1], -hop_t_nn[i]))
+        push!(hamiltonian, ("+-", [i + 1, i], -hop_t_nn[i]))
+        push!(hamiltonian, ("nn", [i, i + 1], hubbard_U_nn[i]))
+        push!(hamiltonian, ("n", [i], chemPot))
+        if i < totalSites-1
+            push!(hamiltonian, ("+-", [i, i + 2], -hop_t_nnn[i]))
+            push!(hamiltonian, ("+-", [i + 2, i], -hop_t_nnn[i]))
+            push!(hamiltonian, ("nnn", [i, i + 1, i + 2], hubbard_U_3[i]))
+        end
+    end
+    push!(hamiltonian, ("n", [totalSites], chemPot))
+    return hamiltonian
+end
+
+function GetCorrelationOperators(totalSites)
+    qubitOperators = ["+", "-", "n", "h"]
+    operators = Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}()
+
+    # 1-particle correlations
+    for _ in 1:5
+        indices = rand(Int, 2) .|> abs .|> n -> rem(n, totalSites) .+ 1
+        operators[randstring()] = [(join([shuffle(qubitOperators)[1] for _ in indices]), indices, 1.)]
     end
 
-    members = [1, 3, 2]
-    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
-        operator = join(bits)
-        sign = ifelse(count(∈(op_cd), operator[2:3]) == 2, -1, 1)
-        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+    # 2-particle correlations
+    for _ in 1:5
+        indices = rand(Int, 4) .|> abs .|> n -> rem(n, totalSites) .+ 1
+        operators[randstring()] = [(join([shuffle(qubitOperators)[1] for _ in indices]), indices, 1.)]
     end
+    return operators
+end
 
-    members = [2, 1, 3]
-    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
-        operator = join(bits)
-        sign = ifelse(count(∈(op_cd), operator[1:2]) == 2, -1, 1)
-        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+
+function GetVNEParty(totalSites)
+    parties = Dict{String, Vector{Int64}}()
+    for size in 1:minimum((totalSites - 1, 5))
+        for _ in 1:5
+            party = shuffle(1:totalSites)[1:size]
+            parties[randstring()] = sort(party)
+        end
     end
+    return parties
+end
 
-    members = [3, 1, 2]
-    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
-        operator = join(bits)
-        sign = ifelse(operator[1] ∈ op_cd && count(∈(op_cd), operator[2:3]) == 1, -1, 1)
-        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+
+function GetMIParties(totalSites)
+    parties = Dict{String, NTuple{2, Vector{Int64}}}()
+    for size1 in 1:minimum((totalSites - 1, 4))
+        for size2 in 1:minimum((4, totalSites - size1))
+            party1 = shuffle(1:totalSites)[1:size1]
+            party2 = shuffle([i for i in 1:totalSites if i ∉ party1])[1:size2]
+            parties[randstring()] = (sort(party1), sort(party2))
+        end
     end
+    return parties
+end
 
-    members = [1, 2, 3, 4]
-    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
-        operator = join(bits)
-        sign = 1
-        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), 1)
+
+function GetSpecFuncChoices(totalSites)
+    objects = Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}[]
+    for size in 1:2
+        for run in 1:4
+            left = shuffle(1:totalSites)[1:size]
+            right = shuffle(1:totalSites)[1:size]
+            operator = join(shuffle(['+', '-', 'n', 'h'])[1:size])
+            object = Dict("create" => [(operator, left, 1.)],
+                                         "destroy" => Dagger([(operator, right, 1.)]),                                 
+                                        )
+            push!(objects, object)
+        end
     end
+    return objects
+end
 
-    members = [1, 3, 2, 4]
-    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
-        operator = join(bits)
-        sign = ifelse(count(∈(op_cd), operator[2:3]) == 2, -1, 1)
-        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
-    end
+@testset "IterDiag Hubbard" begin
+    @testset for totalSites in 3:4
+        hamiltonian = TestModel(totalSites)
+        basis = BasisStates(totalSites)
+        exactEnergies, exactEigvecs = Spectrum(hamiltonian, basis)
 
-    members = [3, 1, 4, 2]
-    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
-        operator = join(bits)
-        sign = ifelse(count(∈(op_cd), operator[3:4]) == 2, -1, 1) * ifelse(operator[1] ∈ op_cd && count(∈(op_cd), operator[[2, 4]]) == 1, -1, 1)
-        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
-    end
+        indexPartitions = collect(1:1:totalSites)
+        hamFlow = MinceHamiltonian(hamiltonian, indexPartitions)
+        operators = GetCorrelationOperators(totalSites)
+        vneParties = GetVNEParty(totalSites)
+        MIParties = GetMIParties(totalSites)
+        savePaths, results, exitCode = IterDiag(hamFlow, 5000; correlationDefDict=copy(operators), vneDefDict=copy(vneParties), mutInfoDefDict=copy(MIParties), silent=true)
+        energies = deserialize(savePaths[end-1])["eigVals"]
 
-    members = [4, 2, 3, 1]
-    for bits in Iterators.product(["+-nh" for _ in 1:length(members)]...)
-        operator = join(bits)
-        sign = ifelse(operator[1] ∈ op_cd && isodd(count(∈(op_cd), operator[2:4])), -1, 1) * ifelse(operator[4] ∈ op_cd && count(∈(op_cd), operator[2:3]) == 1, -1, 1)
-        @test OrganiseOperator(operator, copy(members)) == (operator[sortperm(members)], sort(members), sign)
+        @test length(energies) == length(exactEnergies)
+        @testset for i in eachindex(exactEnergies)
+            @test isapprox(exactEnergies[i], energies[i], atol=1e-11)
+        end
+        @testset for (name, operator) in operators
+            exactCorr = GenCorrelation(exactEigvecs[1], operator)
+            @test isapprox(exactCorr, results[name], atol=1e-11)
+        end
+        @testset for (name, party) in vneParties
+            exactVNE = VonNEntropy(exactEigvecs[1], party)
+            @test isapprox(exactVNE, results[name], atol=1e-11)
+        end
+        @testset for (name, parties) in MIParties
+            exactMI = MutInfo(exactEigvecs[1], parties)
+            @test isapprox(exactMI, results[name], atol=1e-11)
+        end
     end
 end
 
-@testset "Iter Diag" begin
-    totalSites = 3
-    initSites = 1
-    kondoJ = 1.
-    hop_t = 0.9
-    field = 1e-5 # to avoid degeneracies
+@testset "IterDiag Hubbard, symmetries" begin
+    chemPot = 0.01
+    @testset for totalSites in 3:4
+        hamiltonian = TestModel(totalSites)
 
-    function getHamFlow(initSites::Int64, totalSites::Int64, hop_t::Float64, kondoJ::Float64)
-        hamFlow = Vector{Tuple{String, Vector{Int64}, Float64}}[]
-        initHam = Tuple{String, Vector{Int64}, Float64}[]
-        for site in 1:(initSites-1)
-            push!(initHam, ("+-",  [1 + 2 * site, 3 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
-            push!(initHam, ("+-",  [3 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
-            push!(initHam, ("+-",  [2 + 2 * site, 4 + 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
-            push!(initHam, ("+-",  [4 + 2 * site, 2 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
+        basis = BasisStates(totalSites)
+        exactEnergies, exactEigvecs = Spectrum(hamiltonian, basis)
+
+        indexPartitions = collect(1:1:totalSites)
+        hamFlow = MinceHamiltonian(hamiltonian, indexPartitions)
+        operators = GetCorrelationOperators(totalSites)
+        vneParties = GetVNEParty(totalSites)
+        MIParties = GetMIParties(totalSites)
+        savePaths, results, exitCode = IterDiag(hamFlow, 5000; correlationDefDict=copy(operators), vneDefDict=copy(vneParties), mutInfoDefDict=copy(MIParties), silent=true, symmetries=['N'])
+        energies = deserialize(savePaths[end-1])["eigVals"]
+        quantumNos = deserialize(savePaths[end-1])["quantumNos"]
+
+        @test length(energies) == length(exactEnergies)
+        totalNumOperator = [("n", [i], 1.) for i in 1:totalSites]
+        @testset for i in eachindex(exactEnergies)
+            @test isapprox(exactEnergies[i], energies[i], atol=1e-11)
+            @test quantumNos[i][1] == round(GenCorrelation(exactEigvecs[i], totalNumOperator), digits=10)
         end
-        for site in 1:initSites
-            push!(initHam, ("nn",  [1, 1 + 2 * site], kondoJ/4)) # n_{d up, n_{0 up}
-            push!(initHam, ("nn",  [1, 2 + 2 * site], -kondoJ/4)) # n_{d up, n_{0 down}
-            push!(initHam, ("nn",  [2, 1 + 2 * site], -kondoJ/4)) # n_{d down, n_{0 up}
-            push!(initHam, ("nn",  [2, 2 + 2 * site], kondoJ/4)) # n_{d down, n_{0 down}
-            push!(initHam, ("+-+-",  [1, 2, 2 + 2 * site, 1 + 2 * site], kondoJ/2)) # S_d^+ S_0^-
-            push!(initHam, ("+-+-",  [2, 1, 1 + 2 * site, 2 + 2 * site], kondoJ/2)) # S_d^- S_0^+
+        @testset for (name, operator) in operators
+            exactCorr = GenCorrelation(exactEigvecs[1], operator)
+            @test isapprox(exactCorr, results[name], atol=1e-11)
         end
-        push!(initHam, ("n",  [1], field))
-        push!(initHam, ("n",  [2], -field))
-
-        push!(hamFlow, initHam)
-
-        for site in initSites+1:totalSites
-            newTerm = []
-            push!(newTerm, ("+-",  [1 + 2 * site, -1 + 2 * site], -hop_t)) # c^†_{j,up} c_{j+1,up}
-            push!(newTerm, ("+-",  [-1 + 2 * site, 1 + 2 * site], -hop_t)) # c^†_{j+1,up} c_{j,up}
-            push!(newTerm, ("+-",  [2 + 2 * site, 2 * site], -hop_t)) # c^†_{j,dn} c_{j+1,dn}
-            push!(newTerm, ("+-",  [2 * site, 2 + 2 * site], -hop_t)) # c^†_{j+1,dn} c_{j,dn}
-            push!(newTerm, ("nn",  [1, 1 + 2 * site], kondoJ/4)) # n_{d up, n_{0 up}
-            push!(newTerm, ("nn",  [1, 2 + 2 * site], -kondoJ/4)) # n_{d up, n_{0 down}
-            push!(newTerm, ("nn",  [2, 1 + 2 * site], -kondoJ/4)) # n_{d down, n_{0 up}
-            push!(newTerm, ("nn",  [2, 2 + 2 * site], kondoJ/4)) # n_{d down, n_{0 down}
-            push!(newTerm, ("+-+-",  [1, 2, 2 + 2 * site, 1 + 2 * site], kondoJ/2)) # S_d^+ S_0^-
-            push!(newTerm, ("+-+-",  [2, 1, 1 + 2 * site, 2 + 2 * site], kondoJ/2)) # S_d^- S_0^+
-
-            push!(hamFlow, newTerm)
+        @testset for (name, party) in vneParties
+            exactVNE = VonNEntropy(exactEigvecs[1], party)
+            @test isapprox(exactVNE, results[name], atol=1e-11)
         end
-        return hamFlow
+        @testset for (name, parties) in MIParties
+            exactMI = MutInfo(exactEigvecs[1], parties)
+            @test isapprox(exactMI, results[name], atol=1e-11)
+        end
     end
+end
 
-    hamFlow = getHamFlow(initSites, totalSites, hop_t, kondoJ)
-    exactHamiltonian = vcat(hamFlow...)
-    basis = BasisStates(2 + 2 * totalSites)
-    F = eigen(OperatorMatrix(basis, exactHamiltonian))
 
-    @showprogress for members in collect(Iterators.product(fill(1:2+2*totalSites, 4)...))
-        count = 1
-        testingCorrelations = Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}()
-        for bits in Iterators.product(fill("+-", 4)...)
-            testingCorrelations[string(count)] = [(join(bits), collect(members), 1.)]
-            count += 1
-        end
+@testset "Spectral Function" begin
+    freqValues = collect(-10:0.01:10)
+    standDev = 0.01
+    @testset for totalSites in 6:9
+        hamiltonian = TestModel(totalSites)
+        specFuncDefDict = [Dict("create" => [("+", [totalSites], 1.)],
+                                "destroy" => [("-", [totalSites], 1.)]
+                               )
+                          ]
+        basis = BasisStates(totalSites)
+        exactEnergies, exactEigvecs = Spectrum(hamiltonian, basis)
 
-        savePaths, resultsDict = IterDiag(hamFlow, 1100, correlationDefDict = testingCorrelations, silent=true)
-        #=results = deserialize.(savePaths)=#
-        for (k, v) in testingCorrelations
-            exactResult = F.vectors[:, 1]' * OperatorMatrix(basis, v) * F.vectors[:, 1]
-            @test isapprox(exactResult, resultsDict[k], atol=1e-10)
-        end
-
-        testingCorrelations = Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}()
-        for bits in Iterators.product(fill("nh", 4)...)
-            testingCorrelations[string(count)] = [(join(bits), collect(members), 1.)]
-            count += 1
-        end
-        savePaths, resultsDict = IterDiag(hamFlow, 1100, correlationDefDict = testingCorrelations, silent=true)
-        #=results = deserialize.(savePaths)=#
-        for (k, v) in testingCorrelations
-            exactResult = F.vectors[:, 1]' * OperatorMatrix(basis, v) * F.vectors[:, 1]
-            @test isapprox(exactResult, resultsDict[k], atol=1e-10)
-        end
-
-        testingCorrelations = Dict{String, Vector{Tuple{String, Vector{Int64}, Float64}}}()
-        for bits in Iterators.product(fill("+n", 4)...)
-            testingCorrelations[string(count)] = [(join(bits), collect(members), 1.)]
-            count += 1
-        end
-        savePaths, resultsDict = IterDiag(hamFlow, 1100, correlationDefDict = testingCorrelations, silent=true)
-        #=results = deserialize.(savePaths)=#
-        for (k, v) in testingCorrelations
-            exactResult = F.vectors[:, 1]' * OperatorMatrix(basis, v) * F.vectors[:, 1]
-            @test isapprox(exactResult, resultsDict[k], atol=1e-10)
+        indexPartitions = collect(1:1:totalSites)
+        hamFlow = MinceHamiltonian(hamiltonian, indexPartitions)
+        for specFuncOperator in specFuncDefDict
+            savePaths, resultsDict, specFuncOperators = IterDiag(hamFlow, 5000; silent=true, specFuncDefDict=specFuncOperator)
+            specFunc = IterSpecFunc(savePaths, specFuncOperators, freqValues, standDev)
+            exactSpecFunc = SpecFunc(exactEnergies, exactEigvecs, specFuncOperator, freqValues, basis, standDev, normalise=false)
+            error = (specFunc .- exactSpecFunc) .|> abs |> maximum
+            @test isapprox(error, 0., atol=1e-10)
         end
     end
 end

@@ -292,7 +292,7 @@ function TruncateSpectrum(
     )
     if isnothing(corrQuantumNoReq)
         
-        retainIndices = 1:length(eigVals)
+        retainIndices = collect(1:length(eigVals))
 
         # ensure we stop not exactly at maxSize, but at the last state
         # with the same energy as that at maxSize. This ensures we are
@@ -644,12 +644,14 @@ function IterDiag(
     mutInfoToVneMap = Dict{String, Union{Nothing,NTuple{3, String}}}(name => nothing for name in keys(mutInfoDefDict))
     for (name, (sysA, sysB)) in mutInfoDefDict
 
+        @assert issorted(sysA) && issorted(sysB)
+
         # for each mut info request, udpate the vne requirements
         subsystemVneNames = []
 
         # loop over the three VNE that we must compute 
         # in order to compute this I2: S(A), S(B), S(A ∪ B)
-        for subsystem in [sysA, sysB, vcat(sysA, sysB)]
+        for subsystem in [sysA, sysB, sort(vcat(sysA, sysB))]
 
             if subsystem ∈ values(vneDefDict)
                 # if the requested VNE has also been separately
@@ -681,19 +683,23 @@ function IterDiag(
     # |A_i⟩⟨A_j| are simply various combinations of c^† c. For example,
     # |0⟩⟨1| = c, |1⟩⟨1|=c^†c, etc. Therefore, each matrix element is a
     # static correlation corresponding to these operators.
-    vneOperatorToCorrMap = Dict{String, Dict{Tuple{String, Vector{Int64}}, Union{Nothing,String}}}(name => Dict() for name in keys(vneDefDict))
+    vneOperatorToCorrMap = Dict{String, Dict{NTuple{2, Int64}, Union{Nothing,String}}}(name => Dict() for name in keys(vneDefDict))
     for (name, sites) in vneDefDict
+
+        @assert issorted(sites)
 
         # create all the transition operators |A_i⟩⟨A_j| associated with
         # this subspace. Add these correlation requirements to the list.
-        for sequence in Iterators.product(repeat(["+-nh"], length(sites))...)
-            operator = (join(sequence), sites, 1.)
-            corrName = randstring(5)
-            while corrName ∈ keys(correlationDefDict)
+        partialTraceProjectors = PartialTraceProjectors(sites)
+        for i in axes(partialTraceProjectors, 1)
+            for j in axes(partialTraceProjectors, 2)
                 corrName = randstring(5)
+                while corrName ∈ keys(correlationDefDict)
+                    corrName = randstring(5)
+                end
+                correlationDefDict[corrName] = deepcopy(partialTraceProjectors[i, j])
+                vneOperatorToCorrMap[name][(i, j)] = corrName
             end
-            correlationDefDict[corrName] = [operator]
-            vneOperatorToCorrMap[name][(join(sequence), sites)] = corrName
         end
     end
 
@@ -766,28 +772,10 @@ function IterDiag(
     # as the RDM element at that position.
     for (name, sites) in vneDefDict
         reducedDM = zeros(2^length(sites), 2^length(sites))
-        basisVectors = collect(Iterators.product(repeat([[1, 0]], length(sites))...))
-        for (i, sequence_i) in enumerate(basisVectors)
-            for j in eachindex(basisVectors)[i:end]
-                sequence_j = basisVectors[j]
-
-                # sequence_i and sequence_j are the incoming and outgoing basis vectors
-                # of the transition. For a two qubit subspace, this transition can, for
-                # example, be |(1, 1)⟩⟨(0, 0)| = |1⟩⟨0| × |1⟩⟨0| . In second quantisation, 
-                # this is c^† c^†, so the `operatorChars` variable is "++" ("+" is the symbol
-                # for creation operator in our formulation).
-                operatorChars = prod([operatorMap[(s_i, s_j)] for (s_i, s_j) in zip(sequence_i, sequence_j)])
-
-                # this returns the specific name given to the computation request
-                # for this particular operator string,during the iterative diag.
-                corrName = vneOperatorToCorrMap[name][(operatorChars, sites)]
-
-                # having obtained the correlation name, we can easily obtain its value
-                # by getting the corresponding key from resultsDict.
-                matrixElement = resultsDict[corrName]
-                reducedDM[i, j] = matrixElement
-                reducedDM[j, i] = matrixElement'
-            end
+        for ((i, j), corrName) in vneOperatorToCorrMap[name]
+            matrixElement = resultsDict[corrName]
+            reducedDM[i, j] = matrixElement
+            reducedDM[j, i] = matrixElement'
         end
 
         # if trace of RDM is zero, something is wrong,
@@ -851,6 +839,7 @@ function IterSpecFunc(
         magzReq::Union{Nothing,Function}=nothing,
         excOccReq::Union{Nothing,Function}=nothing,
         excMagzReq::Union{Nothing,Function}=nothing,
+        normEveryStep::Bool=false,
     )
     @assert issetequal(keys(specFuncOperators), ["create", "destroy"])
     quantumNoReq = CombineRequirements(occReq, magzReq)
@@ -865,29 +854,37 @@ function IterSpecFunc(
         quantumNos = data["quantumNos"]
         currentSites = data["currentSites"]
 
-        if isnothing(quantumNos)
+        if isnothing(quantumNos) || (isnothing(quantumNoReq) && isnothing(excQuantumNoReq))
             minimalEigVecs = eigVecs
             minimalEigVals = eigVals
         else
-            lowEnergyIndices = findall(q -> quantumNoReq(q, length(currentSites)), quantumNos)
-            groundStateEnergy = minimum(eigVals[lowEnergyIndices])
-            filter!(i -> eigVals[i] ≤ groundStateEnergy + degenTol, lowEnergyIndices)
-            excitedIndices = findall(q -> excQuantumNoReq(q, length(currentSites)), quantumNos)
-            allowedIndices = [lowEnergyIndices; excitedIndices]
+            if !isnothing(quantumNoReq)
+                lowEnergyIndices = findall(q -> quantumNoReq(q, length(currentSites)), quantumNos)
+                groundStateEnergy = minimum(eigVals[lowEnergyIndices])
+                filter!(i -> eigVals[i] ≤ groundStateEnergy + degenTol, lowEnergyIndices)
+            else
+                lowEnergyIndices = 1:length(eigVecs)
+            end
+            if !isnothing(excQuantumNoReq)
+                excitedIndices = findall(q -> excQuantumNoReq(q, length(currentSites)), quantumNos)
+            else
+                excitedIndices = 1:length(eigVecs)
+            end
+            allowedIndices = unique([lowEnergyIndices; excitedIndices])
 
             minimalEigVecs = eigVecs[allowedIndices]
             minimalEigVals = eigVals[allowedIndices]
             @assert abs(groundStateEnergy - minimum(minimalEigVals)) < 1e-10
         end
-
         specFunc = SpecFunc(minimalEigVals, minimalEigVecs, 
                             Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
                             freqValues, standDev;
-                            normalise=true, degenTol=degenTol)
+                            normalise=normEveryStep, degenTol=degenTol)
         totalSpecFunc .+= specFunc
     end
     return totalSpecFunc
 end
+export IterSpecFunc
 
 
 """
