@@ -460,13 +460,9 @@ function IterDiag(
         end
     end
 
-    if calculateThroughout
-        resultsDict = Dict{String, Vector{Float64}}(name => Float64[] for name in keys(correlationDefDict))
-    else
-        resultsDict = Dict{String, Union{Nothing, Float64}}(name => nothing for name in keys(correlationDefDict))
-    end
+    resultsDict = Dict{String, Union{Nothing, Float64}}(name => nothing for name in keys(correlationDefDict))
     @assert "energyPerSite" ∉ keys(resultsDict)
-    resultsDict["energyPerSite"] = ifelse(calculateThroughout, Float64[], nothing)
+    resultsDict["energyPerSite"] = nothing
 
     pbar = Progress(length(hamltFlow); enabled=!silent)
     for (step, hamlt) in enumerate(hamltFlow)
@@ -490,11 +486,7 @@ function IterDiag(
                                            )
                      )
 
-            if calculateThroughout
-                push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
-            else
-                resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
-            end
+            resultsDict["energyPerSite"] = eigVals[1]/maximum(currentSites)
 
             indices = 1:length(eigVals)
             if !isnothing(corrQuantumNoReq) && !isnothing(quantumNos)
@@ -506,33 +498,12 @@ function IterDiag(
             for (name, correlationDef) in correlationDefDict
                 if !isnothing(corrOperatorDict[name])
                     correlationValue = finalState' * corrOperatorDict[name] * finalState
-                    if calculateThroughout
-                        push!(resultsDict[name], correlationValue)
-                    else
-                        resultsDict[name] = correlationValue
-                    end
+                    resultsDict[name] = correlationValue
                 end
             end
 
             next!(pbar; showvalues=[("Size", size(hamltMatrix))])
             break
-        end
-
-        if calculateThroughout
-            push!(resultsDict["energyPerSite"], eigVals[1]/maximum(currentSites))
-
-            indices = 1:length(eigVals)
-            if !isnothing(corrQuantumNoReq) && !isnothing(quantumNos)
-                indices = findall(q -> corrQuantumNoReq(q, maximum(currentSites)), quantumNos)
-            end
-            currentState = rotation[:, indices[sortperm(eigVals[indices])[1]]]
-
-            # calculate correlations using the ground state of the final step
-            for (name, correlationDef) in correlationDefDict
-                if !isnothing(corrOperatorDict[name])
-                    push!(resultsDict[name], currentState' * corrOperatorDict[name] * currentState)
-                end
-            end
         end
 
         # construct a basis and identity matrix for the new sites

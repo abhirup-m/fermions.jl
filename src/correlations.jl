@@ -279,6 +279,11 @@ end
 export ThermalAverage
 
 
+"""
+    SpecFunc(eigVals, eigVecs, probe, freqValues, standDev)
+
+Fundamental implementation of spectral function calculation given a spectrum and excitation operators(defined by probe).
+"""
 function SpecFunc(
     eigVals::Vector{Float64},
     eigVecs::Vector{Vector{Float64}},
@@ -320,7 +325,6 @@ function SpecFunc(
         specFunc = specFunc ./ areaSpecFunc
     end
     return specFunc
-
 end
 export SpecFunc
 
@@ -328,8 +332,7 @@ export SpecFunc
 """
     SpecFunc(eigVals, eigVecs, probe, probeDiag, freqValues, standDev)
 
-Calculate the spectral function for the excitations defined by probe
-and probeDiag.
+Extends SpecFunc above by allowing passing the spectrum in the form native to fermions.jl (dictionaries).
 
 # Examples
 ```jldoctest
@@ -437,6 +440,18 @@ end
 export SpecFunc
 
 
+"""
+    SpecFunc(eigVals, eigVecs, probe, probeDiag, freqValues, 
+             standDev, symmetries, groundStateSector)
+
+Extends SpecFunc() by allowing specific symmetry sectors from which to choose the ground state.
+
+# Examples
+```jldoctest
+julia> SpecFunc(eigenVals, eigenStates, probe, probeDag, freqValues, 1e-2, 
+                ['N']; groundStateSector=(3, 0))
+```
+"""
 function SpecFunc(
     eigVals::Vector{Float64},
     eigVecs::Vector{Dict{BitVector,Float64}},
