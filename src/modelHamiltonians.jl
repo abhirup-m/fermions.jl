@@ -379,3 +379,33 @@ function Dispersion(
     return dispersion
 end
 export Dispersion
+
+
+function J1J2Model(
+        J1byJ2::Float64,
+        numSites::Int64
+    )
+    J2 = 1.
+    J1 = J2 * J1byJ2
+    hamiltonian = Tuple{String, Vector{Int64}, Float64}[]
+    for site in 1:numSites-1
+        # J1 terms
+        push!(hamiltonian, ("nn", [site, site+1], J1))
+        push!(hamiltonian, ("n", [site], -J1/2))
+        push!(hamiltonian, ("n", [site+1], -J1/2))
+        push!(hamiltonian, ("+-", [site, site+1], J1/2))   
+        push!(hamiltonian, ("+-", [site+1, site], J1/2))   
+
+        if site == numSites-1
+            continue
+        end
+
+        # J2 terms
+        push!(hamiltonian, ("nn", [site, site+2], J2))
+        push!(hamiltonian, ("n", [site], -J2/2))
+        push!(hamiltonian, ("n", [site+2], -J2/2))
+        push!(hamiltonian, ("+-", [site, site+2], J2/2))   
+        push!(hamiltonian, ("+-", [site+2, site], J2/2))   
+    end
+    return hamiltonian
+end
