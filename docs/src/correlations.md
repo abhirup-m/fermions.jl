@@ -6,10 +6,26 @@ GenCorrelation(
         operator::Vector{Tuple{String,Vector{Int64},Float64}}
     )
 
+GenCorrelation(
+        state::Vector{Float64},
+        operator::Matrix{Float64}
+    )
+
 ReducedDM(
         state::Dict{BitVector,Float64},
-        reducingIndices::Vector{Int64};
+        nonTracedSites::Vector{Int64};
         reducingConfigs::Vector{BitVector}=BitVector[]
+    )
+
+PartialTraceProjectors(
+        nonTracedSites::Vector{Int64};
+        nonTracedConfigs::Vector{BitVector}=BitVector[]
+    )
+
+ReducedDMProjectorBased(
+        state::Dict{BitVector,Float64},
+        nonTracedSites::Vector{Int64};
+        nonTracedConfigs::Vector{BitVector}=BitVector[]
     )
 
 VonNEntropy(
@@ -40,22 +56,55 @@ ThermalAverage(
 
 SpecFunc(
     eigVals::Vector{Float64},
-    eigVecs::Vector{Dict{BitVector,Float64}},
-    probe::Vector{Tuple{String,Vector{Int64},Float64}},
-    probeDag::Vector{Tuple{String,Vector{Int64},Float64}},
-    freqArray::Vector{Float64},
-    broadening::Float64;
-    gsIndex::Int64=0,
+    eigVecs::Vector{Vector{Float64}},
+    probes::Dict{String,Matrix{Float64}},
+    freqValues::Vector{Float64},
+    standDev::Union{Vector{Float64}, Float64};
+    degenTol::Float64=0.,
+    normalise::Bool=true,
 )
 
 SpecFunc(
     eigVals::Vector{Float64},
     eigVecs::Vector{Dict{BitVector,Float64}},
-    probe::Vector{Tuple{String,Vector{Int64},Float64}},
-    probeDag::Vector{Tuple{String,Vector{Int64},Float64}},
-    freqArray::Vector{Float64},
-    broadening::Float64,
+    probes::Dict{String,Vector{Tuple{String,Vector{Int64},Float64}}},
+    freqValues::Vector{Float64},
+    basisStates::Vector{Dict{BitVector,Float64}},
+    standDev::Union{Vector{Float64}, Float64};
+    degenTol::Float64=0.,
+    normalise::Bool=true,
+)
+SpecFunc(
+    eigVals::Vector{Float64},
+    eigVecs::Vector{Dict{BitVector,Float64}},
+    probes::Dict{String,Vector{Tuple{String,Vector{Int64},Float64}}},
+    freqValues::Vector{Float64},
+    basisStates::Vector{Dict{BitVector,Float64}},
+    standDev::Union{Vector{Float64}, Float64},
     symmetries::Vector{Char};
-    gsIndex::Int64=0,
+    degenTol::Float64=0.,
+    normalise::Bool=true,
+)
+SpecFunc(
+    eigVals::Vector{Float64},
+    eigVecs::Vector{Dict{BitVector,Float64}},
+    probes::Dict{String,Vector{Tuple{String,Vector{Int64},Float64}}},
+    freqValues::Vector{Float64},
+    basisStates::Vector{Dict{BitVector,Float64}},
+    standDev::Union{Vector{Float64}, Float64},
+    symmetries::Vector{Char},
+    groundStateSector::Union{Tuple{Int64}, Tuple{Int64,Int64}};
+    degenTol::Float64=0.,
+    normalise::Bool=true,
+
+)
+SpecFunc(
+    eigVals::Vector{Float64},
+    eigVecMatrix::Matrix{Float64},
+    probes::Dict{String,Matrix{Float64}},
+    freqValues::Vector{Float64},
+    standDev::Union{Vector{Float64}, Float64};
+    degenTol::Float64=0.,
+    normalise::Bool=true,
 )
 ```

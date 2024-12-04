@@ -103,6 +103,29 @@ end
 export BasisStates
 
 
+"""
+    BasisStates(numLevels)
+
+Specialises BasisStates() by restricting to the 1-particle case;
+returns all 1-particle basis states for the given number of levels.
+Equivalent to BasisStates(numLevels; totOccReq=1), but much much faster.
+
+# Examples
+```jldoctest
+julia> BasisStates1p(10)
+10-element Vector{Dict{BitVector, Float64}}:
+ Dict([1, 0, 0, 0, 0, 0, 0, 0, 0, 0] => 1.0)
+ Dict([0, 1, 0, 0, 0, 0, 0, 0, 0, 0] => 1.0)
+ Dict([0, 0, 1, 0, 0, 0, 0, 0, 0, 0] => 1.0)
+ Dict([0, 0, 0, 1, 0, 0, 0, 0, 0, 0] => 1.0)
+ Dict([0, 0, 0, 0, 1, 0, 0, 0, 0, 0] => 1.0)
+ Dict([0, 0, 0, 0, 0, 1, 0, 0, 0, 0] => 1.0)
+ Dict([0, 0, 0, 0, 0, 0, 1, 0, 0, 0] => 1.0)
+ Dict([0, 0, 0, 0, 0, 0, 0, 1, 0, 0] => 1.0)
+ Dict([0, 0, 0, 0, 0, 0, 0, 0, 1, 0] => 1.0)
+ Dict([0, 0, 0, 0, 0, 0, 0, 0, 0, 1] => 1.0)
+```
+"""
 function BasisStates1p(
         numLevels::Int64, 
     )
@@ -410,6 +433,26 @@ end
 export RoundTo
 
 
+"""
+    PermuteSites(state, permutation)
+
+Given a basis state |n_{ν1} n_{ν2} n_{ν3} … ⟩ corresponding to
+a particular ordering choice [ν_1, ν_2, …], this function permutes
+the basis into P(B) = [P(ν1), P(ν2),P(ν3) … ], and returns the 
+basis state written in this new basis, accounting for any fermions 
+signs arising from index permutations.
+
+# Examples
+```jldoctest
+julia> state = Bool.([1, 1])
+2-element BitVector:
+ 1
+ 1
+
+julia> PermuteSites(state, [2, 1])
+(Bool[1, 1], -1)
+```
+"""
 function PermuteSites(
         state::BitVector,
         permutation::Vector{Int64},
@@ -431,6 +474,28 @@ end
 export PermuteSites
 
 
+"""
+    PermuteSites(state, permutation)
+
+Given a state that is written in a particular basis
+B = {|n_{ν1} n_{ν2} n_{ν3} … ⟩}, this function permutes
+the basis into P(B) = {|n_{P(ν1)} n_{P(ν2)} n_{P(ν3)} … ⟩}
+and returns the state written in this new basis, accounting
+for any fermions signs arising from index permutations.
+
+# Examples
+```jldoctest
+julia> state
+Dict{BitVector, Float64} with 2 entries:
+  [1, 1] => 0.5
+  [0, 1] => 0.3
+
+julia> PermuteSites(state, [2, 1])
+Dict{BitVector, Float64} with 2 entries:
+  [1, 1] => -0.5
+  [1, 0] => 0.3
+```
+"""
 function PermuteSites(
         state::Dict{BitVector, Float64},
         permutation::Vector{Int64},
@@ -445,6 +510,17 @@ end
 export PermuteSites
 
 
+"""
+    Dagger(operator, members)
+
+Native method to calculate hermitian conjugate of operator.
+
+# Examples
+```jldoctest
+julia> Dagger("+--+", [1,4,3,2])
+("-++-", [2, 3, 4, 1])
+ ```
+"""
 function Dagger(
         operator::String,
         members::Vector{Int64};
@@ -457,12 +533,30 @@ end
 export Dagger
 
 
+"""
+    Dagger(operator, members)
+
+Native method to calculate hermitian conjugate of operator.
+
+# Examples
+```jldoctest
+julia> operator = [("++", [1, 2], 1.), ("+n", [3, 4], 2.)]
+2-element Vector{Tuple{String, Vector{Int64}, Float64}}:
+ ("++", [1, 2], 1.0)
+ ("+n", [3, 4], 2.0)
+
+julia> Dagger(operator)
+2-element Vector{Tuple{String, Vector{Int64}, Float64}}:
+ ("--", [2, 1], 1.0)
+ ("n-", [4, 3], 2.0)
+ ```
+"""
 function Dagger(
         operator::Vector{Tuple{String,Vector{Int64},Float64}};
     )
     for i in eachindex(operator)
         newOpType, newMembers = Dagger(operator[i][1:2]...)
-        insert!(operator, i+1, (newOpType, newMembers, operator[i][3]))
+        insert!(operator, i+1, (newOpType, newMembers, operator[i][3]'))
         deleteat!(operator, i)
     end
     return operator

@@ -30,6 +30,12 @@ end
 export GenCorrelation
 
 
+"""
+    GenCorrelation(state, operator)
+
+Calculates the expectation value <state|operator|state>, where state and operator
+are accepted as vectors and matrices instead of dicts and bitvectors.
+"""
 function GenCorrelation(
         state::Vector{Float64},
         operator::Matrix{Float64}
@@ -91,6 +97,39 @@ end
 export ReducedDM
 
 
+"""
+    PartialTraceProjectors(nonTracedSites)
+
+A reduced density matrix ρ_A for the subspace A can be calculate using the
+relation ρ_A[i, j] = ⟨Ψ| |j⟩⟨i| |Ψ⟩, where |Ψ⟩ is of course the pure state
+from which are calculating the reduced density matrix, and {|i⟩} are the
+orthonormal basis states of subspace A. The object |j⟩⟨i| is therefore an
+operator that, in general, transitions among various basis states. This 
+function returns the complete set of transition operators {|j⟩⟨i|} for the
+the given subspace A.
+# Examples
+```jldoctest
+julia> operators = PartialTraceProjectors([2, 3]);
+
+julia> println(join(operators, "\n"))
+[("hhhh", [2, 3, 3, 2], 1.0)]
+[("hh--", [2, 3, 3, 2], 1.0)]
+[("hhh-", [2, 3, 3, 2], 1.0)]
+[("hh-h", [2, 3, 3, 2], 1.0)]
+[("++hh", [2, 3, 3, 2], 1.0)]
+[("++--", [2, 3, 3, 2], 1.0)]
+[("++h-", [2, 3, 3, 2], 1.0)]
+[("++-h", [2, 3, 3, 2], 1.0)]
+[("+hhh", [2, 3, 3, 2], 1.0)]
+[("+h--", [2, 3, 3, 2], 1.0)]
+[("+hh-", [2, 3, 3, 2], 1.0)]
+[("+h-h", [2, 3, 3, 2], 1.0)]
+[("h+hh", [2, 3, 3, 2], 1.0)]
+[("h+--", [2, 3, 3, 2], 1.0)]
+[("h+h-", [2, 3, 3, 2], 1.0)]
+[("h+-h", [2, 3, 3, 2], 1.0)]
+```
+"""
 function PartialTraceProjectors(
         nonTracedSites::Vector{Int64};
         nonTracedConfigs::Vector{BitVector}=BitVector[]
@@ -110,6 +149,16 @@ end
 export PartialTraceProjectors
 
 
+"""
+    ReducedDMProjectorBased(state, nonTracedSites)
+
+Alternative method of calculating reduced density matrix. A reduced density 
+matrix ρ_A for the subspace A can be calculate using the relation 
+ρ_A[i, j] = ⟨Ψ| |j⟩⟨i| |Ψ⟩, where |Ψ⟩ is of course the pure state from which 
+are calculating the reduced density matrix, and {|i⟩} are the orthonormal 
+basis states of subspace A. The object |j⟩⟨i| is therefore an operator that,
+in general, transitions among various basis states. 
+"""
 function ReducedDMProjectorBased(
         state::Dict{BitVector,Float64},
         nonTracedSites::Vector{Int64};
