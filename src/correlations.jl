@@ -341,6 +341,7 @@ function SpecFunc(
     standDev::Union{Vector{Float64}, Float64};
     degenTol::Float64=0.,
     normalise::Bool=true,
+    silent::Bool=false,
     )
 
     @assert length(eigVals) == length(eigVecs)
@@ -353,9 +354,11 @@ function SpecFunc(
     specFunc = 0 .* freqValues
 
     degenerateManifold = eigVals .≤ energyGs + degenTol
-    println("Degeneracy = ", length(eigVals[degenerateManifold]), "; Range=[$(eigVals[degenerateManifold][1]), $(eigVals[degenerateManifold][end])]")
+    if !silent
+        println("Degeneracy = ", length(eigVals[degenerateManifold]), "; Range=[$(eigVals[degenerateManifold][1]), $(eigVals[degenerateManifold][end])]")
+    end
 
-    @time @showprogress for groundState in eigVecs[degenerateManifold]
+    @showprogress for groundState in eigVecs[degenerateManifold]
         excitationCreate = probes["create"] * groundState
         excitationDestroy = probes["destroy"] * groundState
         excitationCreateBra = groundState' * probes["create"]
@@ -422,7 +425,7 @@ function SpecFunc(
     standDev::Union{Vector{Float64}, Float64};
     degenTol::Float64=0.,
     normalise::Bool=true,
-
+    silent::Bool=false,
 )
     eigenStates = Vector{Float64}[] 
     for vector in eigVecs
@@ -434,7 +437,7 @@ function SpecFunc(
     end
 
     return SpecFunc(eigVals, eigenStates, probeMatrices, freqValues, standDev;
-                    normalise=normalise, degenTol=degenTol)
+                    normalise=normalise, degenTol=degenTol, silent=silent)
 end
 export SpecFunc
 
@@ -459,7 +462,7 @@ function SpecFunc(
     symmetries::Vector{Char};
     degenTol::Float64=0.,
     normalise::Bool=true,
-
+    silent::Bool=false,
 )
     classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
     groundStateEnergy = minimum(eigVals)
@@ -484,7 +487,7 @@ function SpecFunc(
     @assert groundStateEnergy == minimum(minimalEigVals)
 
     return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev;
-                    normalise=normalise, degenTol=degenTol)
+                    normalise=normalise, degenTol=degenTol, silent=silent)
 end
 export SpecFunc
 
@@ -512,7 +515,7 @@ function SpecFunc(
     groundStateSector::Union{Tuple{Int64}, Tuple{Int64,Int64}};
     degenTol::Float64=0.,
     normalise::Bool=true,
-
+    silent::Bool=false,
 )
     classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
     minimalEigVecs = Dict{BitVector,Float64}[]
@@ -539,7 +542,7 @@ function SpecFunc(
     @assert groundStateEnergy == minimum(minimalEigVals)
 
     return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev;
-                    normalise=normalise, degenTol=degenTol)
+                    normalise=normalise, degenTol=degenTol, silent=silent)
 end
 export SpecFunc
 
@@ -558,10 +561,11 @@ function SpecFunc(
     standDev::Union{Vector{Float64}, Float64};
     degenTol::Float64=0.,
     normalise::Bool=true,
+    silent::Bool=false,
 )
 
     eigVecs = [collect(vec) for vec in eachcol(eigVecMatrix)]
     return SpecFunc(eigVals, eigVecs, probes, freqValues, standDev; 
-                    normalise=normalise, degenTol=degenTol)
+                    normalise=normalise, degenTol=degenTol, silent=silent)
 end
 export SpecFunc
