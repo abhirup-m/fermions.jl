@@ -395,7 +395,6 @@ function IterDiag(
     maxMaxSize::Int64,
     calculateThroughout::Bool,
 )
-
     # ensure each term of the Hamiltonian is sorted in indices
     for (i, hamlt) in enumerate(hamltFlow)
         for (j, (operatorString, members, coupling)) in enumerate(hamlt)
@@ -448,15 +447,16 @@ function IterDiag(
         end
     end
 
-    specFuncOperators = nothing
     if !isempty(specFuncNames)
-        specFuncOperators = Dict{String, Vector{Matrix{Float64}}}(name => Matrix{Float64}[] for name in specFuncNames)
+        specFuncOperators = Dict{String, Vector{Union{Nothing, Matrix{Float64}}}}(name => repeat([nothing], length(hamltFlow)) for name in specFuncNames)
     end
 
     # if any spectral function operators can be calculated right away, do it
-    if !isempty(specFuncNames) && all(name -> !isnothing(corrOperatorDict[name]), specFuncNames)
-        for name in filter(name -> !isnothing(corrOperatorDict[name]), specFuncNames)
-            push!(specFuncOperators[name], corrOperatorDict[name])
+    if !isempty(specFuncNames)
+        for name in specFuncNames
+            if !isnothing(corrOperatorDict[name])
+                specFuncOperators[name][1] = corrOperatorDict[name]
+            end
         end
     end
 
@@ -542,7 +542,7 @@ function IterDiag(
         end
 
         # rotate and enlarge existing operators
-        hamltMatrix, operators, bondAntiSymmzer, corrOperator = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
+        hamltMatrix, operators, bondAntiSymmzer, corrOperatorDict = UpdateOldOperators(eigVals, identityEnv, basket[step+1], 
                                                                                    operators, rotation, bondAntiSymmzer, corrOperatorDict
                                                                                   )
 
@@ -565,10 +565,12 @@ function IterDiag(
             end
         end
 
-        # if new spectral function operators can be created now, do it
-        if !isempty(specFuncNames) && all(name -> !isnothing(corrOperatorDict[name]), specFuncNames)
+        # Add any newly created or updated operators to the specFunc list
+        if !isempty(specFuncNames)
             for name in specFuncNames
-                push!(specFuncOperators[name], corrOperatorDict[name])
+                if !isnothing(corrOperatorDict[name])
+                    specFuncOperators[name][step+1] = corrOperatorDict[name]
+                end
             end
         end
 
@@ -711,10 +713,13 @@ function IterDiag(
     # udpated during the iterative diagonalisation. We will finally
     # not use these operators to compute a ground state correlation,
     # but instead employ them for spectral function calculations.
-    specFuncToCorrMap = Dict{String, String}()
+    specFuncToCorrMap = Dict{String, Vector{String}}()
     for (name, operator) in specFuncDefDict
-        specFuncToCorrMap[name] = randstring(5)
-        correlationDefDict[specFuncToCorrMap[name]] = operator
+        specFuncToCorrMap[name] = String[]
+        for term in operator
+            push!(specFuncToCorrMap[name], randstring())
+            correlationDefDict[specFuncToCorrMap[name][end]] = [term]
+        end
     end
 
     # once we have obtained the complete list of correlation operators
@@ -722,7 +727,7 @@ function IterDiag(
     # and spectral function), we sort the indices of these operators.
     for (k, v) in deepcopy(correlationDefDict)
         for (j, (operatorString, members, coupling)) in enumerate(v)
-            newString, newMembers, sign = OrganiseOperator(operatorString, members)#, newSitesFlow[i])
+            newString, newMembers, sign = OrganiseOperator(operatorString, members)
             correlationDefDict[k][j] = (newString, newMembers, coupling * sign)
         end
     end
@@ -732,16 +737,6 @@ function IterDiag(
     # into a single if-condition.
     quantumNoReq = CombineRequirements(occReq, magzReq)
     corrQuantumNoReq = CombineRequirements(corrOccReq, corrMagzReq)
-
-    # maps transition operators (such as (1, 0) ≡ |1⟩⟨0|) 
-    # to second quantised operators
-    operatorMap = Dict(
-                       (1,1) => "n",
-                       (0,0) => "h",
-                       (1,0) => "+",
-                       (0,1) => "-",
-                      )
-
 
     # perform the actual iterative diagonalisation. savePaths
     # contains the filepaths where data is saved; resultsDict
@@ -755,7 +750,7 @@ function IterDiag(
                                                          degenTol,
                                                          dataDir,
                                                          silent,
-                                                         collect(values(specFuncToCorrMap)),
+                                                         vcat(values(specFuncToCorrMap)...),
                                                          maxMaxSize,
                                                          calculateThroughout,
                                                         )
@@ -765,7 +760,15 @@ function IterDiag(
     # the iterative diagonaliser with random names in order to
     # avoid overwriting.
     if !isempty(specFuncToCorrMap)
-        specFuncOperators = Dict{String,Vector{Matrix{Float64}}}(name => specFuncOperators[corrName] for (name, corrName) in specFuncToCorrMap)
+        specFuncOperatorsConsolidated = Dict{String,Vector{Matrix{Float64}}}()
+        for (name, corrNameVector) in specFuncToCorrMap
+            specFuncOperatorsConsolidated[name] = Matrix{Float64}[]
+            for operatorsStep in zip([specFuncOperators[corrName] for corrName in corrNameVector]...)
+                if any(!isnothing, operatorsStep)
+                    push!(specFuncOperatorsConsolidated[name], sum(filter(o -> !isnothing(o), operatorsStep)))
+                end
+            end
+        end
     end
 
     # if vne was requested, we now have the various matrix elements
@@ -820,14 +823,14 @@ function IterDiag(
 
     # if there's entanglement involved, return exit code. if spectral function,
     # return that. Otherwise just return the results.
-    if isempty(vneDefDict) && isempty(mutInfoDefDict) && isnothing(specFuncOperators)
+    if isempty(vneDefDict) && isempty(mutInfoDefDict) && isnothing(specFuncOperatorsConsolidated)
         return savePaths, resultsDict
-    elseif (!isempty(vneDefDict) || !isempty(mutInfoDefDict)) && isnothing(specFuncOperators)
+    elseif (!isempty(vneDefDict) || !isempty(mutInfoDefDict)) && isnothing(specFuncOperatorsConsolidated)
         return savePaths, resultsDict, exitCode
-    elseif isempty(vneDefDict) && isempty(mutInfoDefDict) && !isnothing(specFuncOperators)
-        return savePaths, resultsDict, specFuncOperators
-    elseif (!isempty(vneDefDict) || !isempty(mutInfoDefDict)) && !isnothing(specFuncOperators)
-        return savePaths, resultsDict, exitCode, specFuncOperators
+    elseif isempty(vneDefDict) && isempty(mutInfoDefDict) && !isnothing(specFuncOperatorsConsolidated)
+        return savePaths, resultsDict, specFuncOperatorsConsolidated
+    elseif (!isempty(vneDefDict) || !isempty(mutInfoDefDict)) && !isnothing(specFuncOperatorsConsolidated)
+        return savePaths, resultsDict, exitCode, specFuncOperatorsConsolidated
     end
 end
 export IterDiag
@@ -844,6 +847,7 @@ function IterSpecFunc(
         excOccReq::Union{Nothing,Function}=nothing,
         excMagzReq::Union{Nothing,Function}=nothing,
         normEveryStep::Bool=false,
+        silent::Bool=false,
     )
     @assert issetequal(keys(specFuncOperators), ["create", "destroy"])
     quantumNoReq = CombineRequirements(occReq, magzReq)
@@ -882,7 +886,7 @@ function IterSpecFunc(
         end
         specFunc = SpecFunc(minimalEigVals, minimalEigVecs, 
                             Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
-                            freqValues, standDev;
+                            freqValues, standDev; silent=silent,
                             normalise=normEveryStep, degenTol=degenTol)
         totalSpecFunc .+= specFunc
     end

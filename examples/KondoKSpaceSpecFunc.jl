@@ -147,16 +147,16 @@ ax = Axis(f[1,1], xlabel=L"\omega/D",ylabel=L"A_\mathrm{loc}(\omega)", title=L"$
 @assert (totalSites - initSites) % addPerStep == 0
 specFuncDefDict = Dict("create" => Tuple{String, Vector{Int64}, Float64}[],
                        "destroy" => Tuple{String, Vector{Int64}, Float64}[])
-push!(specFuncDefDict["create"], ("+", [1], 1.))
-push!(specFuncDefDict["destroy"], ("-", [1], 1.))
-push!(specFuncDefDict["create"], ("+", [2], 1.))
-push!(specFuncDefDict["destroy"], ("-", [2], 1.))
-#=for site in 1:totalSites=#
-#=    push!(specFuncDefDict["create"], ("+-+", [2, 1, 2 * site + 1], 0.5))=#
-#=    push!(specFuncDefDict["create"], ("+-+", [1, 2, 2 * site + 2], 0.5))=#
-#=    push!(specFuncDefDict["destroy"], ("+--", [1, 2, 2 * site + 1], 0.5))=#
-#=    push!(specFuncDefDict["destroy"], ("+--", [2, 1, 2 * site + 2], 0.5))=#
-#=end=#
+#=push!(specFuncDefDict["create"], ("+", [1], 1.))=#
+#=push!(specFuncDefDict["destroy"], ("-", [1], 1.))=#
+#=push!(specFuncDefDict["create"], ("+", [2], 1.))=#
+#=push!(specFuncDefDict["destroy"], ("-", [2], 1.))=#
+for site in 1:totalSites
+    push!(specFuncDefDict["create"], ("+-+", [2, 1, 2 * site + 1], 0.5))
+    push!(specFuncDefDict["create"], ("+-+", [1, 2, 2 * site + 2], 0.5))
+    push!(specFuncDefDict["destroy"], ("+--", [1, 2, 2 * site + 1], 0.5))
+    push!(specFuncDefDict["destroy"], ("+--", [2, 1, 2 * site + 2], 0.5))
+end
 
 minceIndices = collect(2 * (1 + initSites):2 * addPerStep:2 * (1 + totalSites))
 
