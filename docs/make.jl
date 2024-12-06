@@ -1,6 +1,6 @@
-using Documenter, fermions
+using Documenter, Fermions
 
 makedocs(sitename="Fermions.jl")
 deploydocs(
-    repo = "github.com/abhirup-m/fermions.jl.git",
+    repo = "github.com/abhirup-m/Fermions.jl.git",
 )

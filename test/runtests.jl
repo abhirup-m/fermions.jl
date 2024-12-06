@@ -1,5 +1,5 @@
 using Test, LinearAlgebra, ProgressMeter, Serialization
-using fermions
+using Fermions
 
 include("testing_helpers.jl")
 include("base_tests.jl")

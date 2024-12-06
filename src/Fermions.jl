@@ -1,4 +1,4 @@
-module fermions
+module Fermions
 
 using ProgressMeter, LinearAlgebra, Combinatorics
 
