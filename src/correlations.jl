@@ -342,13 +342,14 @@ function SpecFunc(
     degenTol::Float64=0.,
     normalise::Bool=true,
     silent::Bool=false,
+    broadFuncType::String="lorentz",
     )
 
     @assert length(eigVals) == length(eigVecs)
-
+    @assert broadFuncType ∈ ("lorentz", "gauss")
     @assert issorted(freqValues)
 
-    broadeningFunc(x, standDev) = standDev ./ (x .^ 2 .+ standDev .^ 2)
+    broadeningFunc(x, standDev) = ifelse(broadFuncType=="lorentz", standDev ./ (x .^ 2 .+ standDev .^ 2), exp.(-0.5 .* ((x ./ standDev).^2)) ./ (standDev .* ((2π)^0.5)))
 
     energyGs = minimum(eigVals)
     specFunc = 0 .* freqValues
@@ -358,7 +359,7 @@ function SpecFunc(
         println("Degeneracy = ", length(eigVals[degenerateManifold]), "; Range=[$(eigVals[degenerateManifold][1]), $(eigVals[degenerateManifold][end])]")
     end
 
-    @showprogress for groundState in eigVecs[degenerateManifold]
+    @showprogress desc="$(broadFuncType)" for groundState in eigVecs[degenerateManifold]
         excitationCreate = probes["create"] * groundState
         excitationDestroy = probes["destroy"] * groundState
         excitationCreateBra = groundState' * probes["create"]
@@ -426,6 +427,7 @@ function SpecFunc(
     degenTol::Float64=0.,
     normalise::Bool=true,
     silent::Bool=false,
+    broadFuncType::String="lorentz",
 )
     eigenStates = Vector{Float64}[] 
     for vector in eigVecs
@@ -437,7 +439,7 @@ function SpecFunc(
     end
 
     return SpecFunc(eigVals, eigenStates, probeMatrices, freqValues, standDev;
-                    normalise=normalise, degenTol=degenTol, silent=silent)
+                    normalise=normalise, degenTol=degenTol, silent=silent, broadFuncType=broadFuncType)
 end
 export SpecFunc
 
@@ -463,6 +465,7 @@ function SpecFunc(
     degenTol::Float64=0.,
     normalise::Bool=true,
     silent::Bool=false,
+    broadFuncType::String="lorentz",
 )
     classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
     groundStateEnergy = minimum(eigVals)
@@ -487,7 +490,7 @@ function SpecFunc(
     @assert groundStateEnergy == minimum(minimalEigVals)
 
     return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev;
-                    normalise=normalise, degenTol=degenTol, silent=silent)
+                    normalise=normalise, degenTol=degenTol, silent=silent, broadFuncType=broadFuncType)
 end
 export SpecFunc
 
@@ -516,6 +519,7 @@ function SpecFunc(
     degenTol::Float64=0.,
     normalise::Bool=true,
     silent::Bool=false,
+    broadFuncType::String="lorentz",
 )
     classifiedSpectrum, classifiedEnergies = ClassifyBasis(eigVecs, symmetries; energies=eigVals)
     minimalEigVecs = Dict{BitVector,Float64}[]
@@ -542,7 +546,7 @@ function SpecFunc(
     @assert groundStateEnergy == minimum(minimalEigVals)
 
     return SpecFunc(minimalEigVals, minimalEigVecs, probes, freqValues, basisStates, standDev;
-                    normalise=normalise, degenTol=degenTol, silent=silent)
+                    normalise=normalise, degenTol=degenTol, silent=silent, broadFuncType=broadFuncType)
 end
 export SpecFunc
 
@@ -562,10 +566,11 @@ function SpecFunc(
     degenTol::Float64=0.,
     normalise::Bool=true,
     silent::Bool=false,
+    broadFuncType::String="lorentz",
 )
 
     eigVecs = [collect(vec) for vec in eachcol(eigVecMatrix)]
     return SpecFunc(eigVals, eigVecs, probes, freqValues, standDev; 
-                    normalise=normalise, degenTol=degenTol, silent=silent)
+                    normalise=normalise, degenTol=degenTol, silent=silent, broadFuncType=broadFuncType)
 end
 export SpecFunc

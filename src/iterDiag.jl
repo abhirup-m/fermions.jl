@@ -848,6 +848,7 @@ function IterSpecFunc(
         excMagzReq::Union{Nothing,Function}=nothing,
         normEveryStep::Bool=false,
         silent::Bool=false,
+        broadFuncType::String="lorentz",
     )
     @assert issetequal(keys(specFuncOperators), ["create", "destroy"])
     quantumNoReq = CombineRequirements(occReq, magzReq)
@@ -887,7 +888,7 @@ function IterSpecFunc(
         specFunc = SpecFunc(minimalEigVals, minimalEigVecs, 
                             Dict(name => specFuncOperators[name][i] for name in keys(specFuncOperators)),
                             freqValues, standDev; silent=silent,
-                            normalise=normEveryStep, degenTol=degenTol)
+                            normalise=normEveryStep, degenTol=degenTol, broadFuncType=broadFuncType)
         totalSpecFunc .+= specFunc
     end
     return totalSpecFunc
