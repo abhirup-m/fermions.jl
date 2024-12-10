@@ -585,7 +585,11 @@ function IterDiag(
         GC.gc()
     end
     
-    return savePaths, resultsDict, specFuncOperators
+    if !isempty(specFuncNames)
+        return savePaths, resultsDict, specFuncOperators
+    else
+        return savePaths, resultsDict
+    end
 end
 export IterDiag
 
@@ -743,14 +747,16 @@ function IterDiag(
     # contains energyPerSite and correlation values;
     # specFuncOperators contains the updated forms of the
     # operators that will be used for spectral function calculations.
-    savePaths, resultsDict, specFuncOperators = IterDiag(hamltFlow, maxSize, symmetries,
+    specFuncNames = String[]
+    append!(specFuncNames, vcat(values(specFuncToCorrMap)...))
+    output = IterDiag(hamltFlow, maxSize, symmetries,
                                                          correlationDefDict,
                                                          quantumNoReq, 
                                                          corrQuantumNoReq,
                                                          degenTol,
                                                          dataDir,
                                                          silent,
-                                                         vcat(values(specFuncToCorrMap)...),
+                                                         specFuncNames,
                                                          maxMaxSize,
                                                          calculateThroughout,
                                                         )
@@ -759,7 +765,10 @@ function IterDiag(
     # their original names, because they had been passed into 
     # the iterative diagonaliser with random names in order to
     # avoid overwriting.
+    savePaths, resultsDict = output[1], output[2]
+    specFuncOperatorsConsolidated = nothing
     if !isempty(specFuncToCorrMap)
+        specFuncOperators = output[3]
         specFuncOperatorsConsolidated = Dict{String,Vector{Matrix{Float64}}}()
         for (name, corrNameVector) in specFuncToCorrMap
             specFuncOperatorsConsolidated[name] = Matrix{Float64}[]
